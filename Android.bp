@@ -146,8 +146,6 @@ cc_library {
             },
         },
     },
-    // b/78296483, run time error if both LTO and lld are enabled
-    use_clang_lld: false,
 }
 
 cc_library {
@@ -174,8 +172,6 @@ cc_library {
             },
         },
     },
-    // b/78296483, run time error if both LTO and lld are enabled
-    use_clang_lld: false,
 }
 
 cc_library {
