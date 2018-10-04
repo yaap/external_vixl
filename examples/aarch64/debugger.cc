@@ -1,4 +1,4 @@
-// Copyright 2016, VIXL authors
+// Copyright 2014, VIXL authors
 // All rights reserved.
 //
 // Redistribution and use in source and binary forms, with or without
@@ -24,30 +24,50 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#include "examples.h"
 
-#include "code-buffer-vixl.h"
-#include "test-runner.h"
 
-namespace vixl {
+// This is an interactive example, not to be used for testing.
+#ifndef TEST_EXAMPLES
 
-#define TEST(name) TEST_(CODE_BUFFER_##name)
+#define __ masm->
 
-TEST(align_grow) {
-  CodeBuffer code_buffer(2);
-  VIXL_CHECK(code_buffer.GetCapacity() == 2);
-  VIXL_CHECK(code_buffer.GetRemainingBytes() == 2);
-
-  code_buffer.Emit16(0);
-  VIXL_CHECK(code_buffer.GetCapacity() == 2);
-  VIXL_CHECK(code_buffer.GetRemainingBytes() == 0);
-
-  // Check that the buffer can automatically grow when aligning the cursor.
-  VIXL_CHECK(IsAligned<2>(code_buffer.GetCursorOffset()));
-  code_buffer.Align();
-  VIXL_CHECK(IsWordAligned(code_buffer.GetCursorOffset()));
-  VIXL_CHECK(code_buffer.GetCapacity() > 2);
-
-  code_buffer.SetClean();
+// The aim is to let the user "play" with the debugger. Brk will trigger the
+// debugger shell.
+void GenerateBreak(MacroAssembler* masm) {
+  Label hop;
+  __ Brk();
+  __ Nop();
+  __ B(&hop);
+  __ Nop();
+  __ Bind(&hop);
+  __ Mov(x1, 123);
+  __ Mov(x2, 456);
+  __ Add(x0, x1, x2);
+  __ Ret();
 }
 
-}  // namespace vixl
+
+#ifdef VIXL_INCLUDE_SIMULATOR_AARCH64
+int main(void) {
+  MacroAssembler masm;
+  Decoder decoder;
+  Debugger debugger(&decoder);
+
+  // Generate the code for the example function.
+  Label start;
+  masm.Bind(&start);
+  GenerateBreak(&masm);
+  masm.FinalizeCode();
+
+  // Run the example function.
+  debugger.RunFrom(masm.GetLabelAddress<Instruction*>(&start));
+  printf("Debugger example run\n");
+
+  return 0;
+}
+#else
+// Without the simulator there is nothing to test.
+int main(void) { return 0; }
+#endif  // VIXL_INCLUDE_SIMULATOR_AARCH64
+#endif  // TEST_EXAMPLES
