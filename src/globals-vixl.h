@@ -63,6 +63,9 @@ namespace vixl {
 
 typedef uint8_t byte;
 
+// Type for half-precision (16 bit) floating point numbers.
+typedef uint16_t float16;
+
 const int KBytes = 1024;
 const int MBytes = 1024 * KBytes;
 
@@ -114,6 +117,7 @@ struct Unsigned<64> {
       throw std::runtime_error(oss.str());                   \
     }                                                        \
   } while (false)
+#define VIXL_THROW_IN_NEGATIVE_TESTING_MODE(error) throw(error)
 #else
 #define VIXL_ABORT()                                         \
   do {                                                       \
@@ -135,6 +139,7 @@ struct Unsigned<64> {
       abort();                                          \
     }                                                   \
   } while (false)
+#define VIXL_THROW_IN_NEGATIVE_TESTING_MODE(error)
 #endif
 #ifdef VIXL_DEBUG
 #define VIXL_ASSERT(condition) VIXL_CHECK(condition)
@@ -199,12 +204,10 @@ inline void USE(const T1&, const T2&, const T3&, const T4&) {}
 #define __has_warning(x) 0
 #endif
 
-// Fallthrough annotation for Clang and C++11(201103L).
+// Note: This option is only available for Clang. And will only be enabled for
+// C++11(201103L).
 #if __has_warning("-Wimplicit-fallthrough") && __cplusplus >= 201103L
 #define VIXL_FALLTHROUGH() [[clang::fallthrough]]
-// Fallthrough annotation for GCC >= 7.
-#elif __GNUC__ >= 7
-#define VIXL_FALLTHROUGH() __attribute__((fallthrough))
 #else
 #define VIXL_FALLTHROUGH() \
   do {                     \

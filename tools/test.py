@@ -175,10 +175,17 @@ test_build_options = [
   build_option_negative_testing
 ]
 
-test_runtime_options = []
+runtime_option_debugger = \
+  RuntimeOption('debugger',
+                '''Test with the specified configurations for the debugger.
+                Note that this is only tested if we are using the simulator.''',
+                val_test_choices=['all', 'on', 'off'])
+test_runtime_options = [
+  runtime_option_debugger
+]
 
 test_options = \
-    test_environment_options + test_build_options + test_runtime_options
+  test_environment_options + test_build_options + test_runtime_options
 
 
 def BuildOptions():
@@ -224,9 +231,6 @@ def BuildOptions():
     const=multiprocessing.cpu_count(),
     help='''Runs the tests using N jobs. If the option is set but no value is
     provided, the script will use as many jobs as it thinks useful.''')
-  general_arguments.add_argument('--clang-format',
-                                 default=clang_format.DEFAULT_CLANG_FORMAT,
-                                 help='Path to clang-format.')
   general_arguments.add_argument('--nobench', action='store_true',
                                  help='Do not run benchmarks.')
   general_arguments.add_argument('--nolint', action='store_true',
@@ -340,7 +344,7 @@ def RunLinter():
 
 def RunClangFormat():
   return clang_format.ClangFormatFiles(clang_format.GetCppSourceFilesToFormat(),
-                                       args.clang_format, jobs = args.jobs,
+                                       jobs = args.jobs,
                                        progress_prefix = 'clang-format: ')
 
 
@@ -437,6 +441,7 @@ if __name__ == '__main__':
     SetFast(environment_option_compiler, args.compiler, 'clang++')
     SetFast(build_option_standard, args.std, 'c++98')
     SetFast(build_option_mode, args.mode, 'debug')
+    SetFast(runtime_option_debugger, args.debugger, 'on')
 
   if not args.nolint and not (args.fast or args.dry_run):
     rc |= RunLinter()
@@ -445,6 +450,11 @@ if __name__ == '__main__':
   if not args.noclang_format and not (args.fast or args.dry_run):
     rc |= RunClangFormat()
     MaybeExitEarly(rc)
+
+  # Don't try to test the debugger if we are not running with the simulator.
+  if not args.simulator:
+    test_runtime_options = \
+      filter(lambda x: x.name != 'debugger', test_runtime_options)
 
   # List all combinations of options that will be tested.
   def ListCombinations(args, options):
