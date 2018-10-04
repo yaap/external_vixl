@@ -30,7 +30,7 @@
 #include "aarch64/macro-assembler-aarch64.h"
 #include "aarch64/simulator-aarch64.h"
 
-#ifdef VIXL_HAS_SIMULATED_RUNTIME_CALL_SUPPORT
+#ifdef VIXL_SIMULATED_RUNTIME_CALL_SUPPORT
 
 #define __ masm->
 
@@ -58,8 +58,6 @@ void overload_function(int32_t value) {
 }
 
 void GenerateRuntimeCallExamples(MacroAssembler* masm) {
-  // Preserve lr, since the calls will overwrite it.
-  __ Push(xzr, lr);
   // The arguments are expected in the appropriate registers (following the
   // Aarch64 ABI).
   __ CallRuntime(add_int32s);
@@ -74,8 +72,6 @@ void GenerateRuntimeCallExamples(MacroAssembler* masm) {
   __ CallRuntime<void, float>(overload_function);
   __ CallRuntime(float_to_int32);
   __ CallRuntime<void, int32_t>(overload_function);
-  // Restore lr and return.
-  __ Pop(lr, xzr);
   __ Ret();
 }
 
@@ -120,4 +116,4 @@ int main(void) { return 0; }
 #ifndef TEST_EXAMPLES
 int main(void) { return 0; }
 #endif  // TEST_EXAMPLES
-#endif  // VIXL_HAS_SIMULATED_RUNTIME_CALL_SUPPORT
+#endif  // VIXL_SIMULATED_RUNTIME_CALL_SUPPORT
