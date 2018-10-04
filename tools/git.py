@@ -27,13 +27,9 @@
 import re
 import util
 import os.path
-from pipes import quote
 
 def is_git_repository_root(path):
-  command = 'git -C ' + quote(path) + ' rev-parse --show-toplevel'
-  status, toplevel = util.getstatusoutput(command)
-  if status != 0: return False
-  return os.path.samefile(toplevel, path)
+  return os.path.isdir(os.path.join(path, '.git'))
 
 def get_tracked_files():
   command = 'git ls-tree HEAD -r --full-tree --name-only'
