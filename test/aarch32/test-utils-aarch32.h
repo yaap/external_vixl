@@ -30,17 +30,7 @@
 #include "../test-pool-manager.h"
 #include "../test-runner.h"
 #include "aarch32/constants-aarch32.h"
-
-#if defined(__clang__)
-// Since clang-4579689 there is a slowdown in compilation time.
-// This is a workaround for the issue.
-#pragma clang optimize off
 #include "aarch32/instructions-aarch32.h"
-#pragma clang optimize on
-#else
-#include "aarch32/instructions-aarch32.h"
-#endif
-
 #include "aarch32/macro-assembler-aarch32.h"
 
 namespace vixl {
