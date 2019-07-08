@@ -51,6 +51,10 @@
 // NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 // SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+package {
+    default_visibility: ["//visibility:private"],
+}
+
 cc_defaults {
     name: "vixl-common",
     host_supported: true,
@@ -129,8 +133,13 @@ cc_defaults {
     ],
 }
 
+libvixl_visibility = [
+    "//art:__subpackages__",
+]
+
 art_cc_library {
     name: "libvixl",
+    visibility: libvixl_visibility,
     defaults: [
         "vixl-release",
         "vixl-arm",
@@ -149,6 +158,7 @@ art_cc_library {
 
 art_cc_library {
     name: "libvixld",
+    visibility: libvixl_visibility,
     defaults: [
         "vixl-debug",
         "vixl-arm",
