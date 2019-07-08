@@ -105,7 +105,7 @@ art_cc_defaults {
                 "-DVIXL_INCLUDE_SIMULATOR_AARCH64",
                 "-DVIXL_INCLUDE_TARGET_A64",
             ],
-        }
+        },
     },
 }
 
@@ -141,7 +141,7 @@ art_cc_library {
     target: {
         android: {
             lto: {
-                 thin: true,
+                thin: true,
             },
         },
     },
@@ -164,7 +164,11 @@ art_cc_library {
 cc_test_host {
     name: "vixl-test-runner",
     gtest: false,
-    defaults: ["vixl-debug", "vixl-arm", "vixl-arm64"],
+    defaults: [
+        "vixl-debug",
+        "vixl-arm",
+        "vixl-arm64",
+    ],
     local_include_dirs: ["test"],
     srcs: [
         "test/*.cc",
