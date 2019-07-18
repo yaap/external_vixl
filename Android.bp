@@ -58,7 +58,6 @@ package {
 cc_defaults {
     name: "vixl-common",
     host_supported: true,
-    srcs: ["src/*.cc"],
     clang_cflags: ["-Wimplicit-fallthrough"],
     cflags: [
         "-Wall",
@@ -79,7 +78,6 @@ cc_defaults {
 
         "-DVIXL_CODE_BUFFER_MALLOC",
     ],
-    local_include_dirs: ["src"],
     native_coverage: false,
     sanitize: {
         recover: ["shift-exponent"],
@@ -137,10 +135,18 @@ libvixl_visibility = [
     "//art:__subpackages__",
 ]
 
+// Defaults for the libvixl[d] libraries
+cc_defaults {
+    name: "libvixl-defaults",
+    srcs: ["src/*.cc"],
+    export_include_dirs: ["src"],
+}
+
 art_cc_library {
     name: "libvixl",
     visibility: libvixl_visibility,
     defaults: [
+        "libvixl-defaults",
         "vixl-release",
         "vixl-arm",
         "vixl-arm64",
@@ -160,6 +166,7 @@ art_cc_library {
     name: "libvixld",
     visibility: libvixl_visibility,
     defaults: [
+        "libvixl-defaults",
         "vixl-debug",
         "vixl-arm",
         "vixl-arm64",
@@ -179,11 +186,16 @@ cc_test_host {
         "vixl-arm",
         "vixl-arm64",
     ],
-    local_include_dirs: ["test"],
+    local_include_dirs: [
+        "test",
+    ],
     srcs: [
         "test/*.cc",
         "test/aarch32/*.cc",
         "test/aarch64/*.cc",
+    ],
+    static_libs: [
+        "libvixld",
     ],
     data: [
         "test/test-trace-reference/*",
