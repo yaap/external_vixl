@@ -3379,6 +3379,15 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     return GetScratchFPRegisterList();
   }
 
+  // FIXME: In the latest upstream VIXL GetScratchFPRegisterList gets replaced with
+  // GetScratchVRegisterList and is not available any more. This causes issues to move ART to the
+  // new API.
+  // The current version of GetScratchVRegisterList is temporary till the ART is moved to the new
+  // VIXL API and the upstream version of GetScratchVRegisterList is being integrated.
+  CPURegList* GetScratchVRegisterList() {
+    return GetScratchFPRegisterList();
+  }
+
   // Get or set the current (most-deeply-nested) UseScratchRegisterScope.
   void SetCurrentScratchRegisterScope(UseScratchRegisterScope* scope) {
     current_scratch_scope_ = scope;
