@@ -69,12 +69,20 @@ cc_defaults {
         "-fdiagnostics-show-option",
         "-Wredundant-decls",
         "-Wunreachable-code",
-        "-Wmissing-noreturn",
         "-pedantic",
 
         // Explicitly enable the write-strings warning. VIXL uses
         // const correctly when handling string constants.
         "-Wwrite-strings",
+
+        // Explicitly disable 'missing-return' warnings because a lot of them are false positive.
+        // VIXL often creates stubs and compile-time configurations with things like
+        // VIXL_UNIMPLEMENTED(). Properly satisfying -Wmissing-noreturn requires that functions are
+        // annotated at their _declarations_, which means #ifdefs in header files.
+        // Conditional compilation in headers can result in incorrect behaviour when
+        // libvixl.so is built with different flags than the code using it. Disabling this
+        // warning allows VIXL to simplify the headers, and should make VIXL more robust.
+        "-Wno-missing-noreturn",
 
         "-DVIXL_CODE_BUFFER_MALLOC",
     ],
