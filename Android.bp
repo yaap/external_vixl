@@ -106,11 +106,23 @@ cc_defaults {
     },
 }
 
-art_cc_defaults {
+cc_defaults {
     name: "vixl-arm",
     defaults: ["vixl-common"],
-    codegen: {
-        arm: {
+    target: {
+        host: {
+            srcs: ["src/aarch32/*.cc"],
+            cppflags: [
+                "-DVIXL_INCLUDE_TARGET_T32",
+            ],
+        },
+        android_arm: {
+            srcs: ["src/aarch32/*.cc"],
+            cppflags: [
+                "-DVIXL_INCLUDE_TARGET_T32",
+            ],
+        },
+        android_arm64: {
             srcs: ["src/aarch32/*.cc"],
             cppflags: [
                 "-DVIXL_INCLUDE_TARGET_T32",
@@ -119,11 +131,18 @@ art_cc_defaults {
     },
 }
 
-art_cc_defaults {
+cc_defaults {
     name: "vixl-arm64",
     defaults: ["vixl-common"],
-    codegen: {
-        arm64: {
+    target: {
+        host: {
+            srcs: ["src/aarch64/*.cc"],
+            cppflags: [
+                "-DVIXL_INCLUDE_SIMULATOR_AARCH64",
+                "-DVIXL_INCLUDE_TARGET_A64",
+            ],
+        },
+        android_arm64: {
             srcs: ["src/aarch64/*.cc"],
             cppflags: [
                 "-DVIXL_INCLUDE_SIMULATOR_AARCH64",
@@ -234,7 +253,7 @@ cc_test_host {
         "test",
     ],
     exclude_srcs: [
-        "test/test-donkey.cc"
+        "test/test-donkey.cc",
     ],
     srcs: [
         "test/*.cc",
