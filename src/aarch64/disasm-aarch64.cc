@@ -33,7 +33,6 @@
 namespace vixl {
 namespace aarch64 {
 
-
 const Disassembler::FormToVisitorFnMap *Disassembler::GetFormToVisitorFnMap() {
   static const FormToVisitorFnMap form_to_visitor = {
       DEFAULT_FORM_TO_VISITOR_MAP(Disassembler),
@@ -48,7 +47,6 @@ const Disassembler::FormToVisitorFnMap *Disassembler::GetFormToVisitorFnMap() {
       {"csdb_hi_hints"_h, &Disassembler::DisassembleNoArgs},
       {"dgh_hi_hints"_h, &Disassembler::DisassembleNoArgs},
       {"ssbb_only_barriers"_h, &Disassembler::DisassembleNoArgs},
-      {"pssbb_only_barriers"_h, &Disassembler::DisassembleNoArgs},
       {"esb_hi_hints"_h, &Disassembler::DisassembleNoArgs},
       {"isb_bi_barriers"_h, &Disassembler::DisassembleNoArgs},
       {"nop_hi_hints"_h, &Disassembler::DisassembleNoArgs},
@@ -672,6 +670,88 @@ const Disassembler::FormToVisitorFnMap *Disassembler::GetFormToVisitorFnMap() {
       {"usdot_z_zzzi_s"_h, &Disassembler::VisitSVEMulIndex},
       {"sudot_z_zzzi_s"_h, &Disassembler::VisitSVEMulIndex},
       {"usdot_asimdsame2_d"_h, &Disassembler::VisitNEON3SameExtra},
+      {"addg_64_addsub_immtags"_h,
+       &Disassembler::Disassemble_XdSP_XnSP_uimm6_uimm4},
+      {"gmi_64g_dp_2src"_h, &Disassembler::Disassemble_Xd_XnSP_Xm},
+      {"irg_64i_dp_2src"_h, &Disassembler::Disassemble_XdSP_XnSP_Xm},
+      {"ldg_64loffset_ldsttags"_h, &Disassembler::DisassembleMTELoadTag},
+      {"st2g_64soffset_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"st2g_64spost_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"st2g_64spre_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"stgp_64_ldstpair_off"_h, &Disassembler::DisassembleMTEStoreTagPair},
+      {"stgp_64_ldstpair_post"_h, &Disassembler::DisassembleMTEStoreTagPair},
+      {"stgp_64_ldstpair_pre"_h, &Disassembler::DisassembleMTEStoreTagPair},
+      {"stg_64soffset_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"stg_64spost_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"stg_64spre_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"stz2g_64soffset_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"stz2g_64spost_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"stz2g_64spre_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"stzg_64soffset_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"stzg_64spost_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"stzg_64spre_ldsttags"_h, &Disassembler::DisassembleMTEStoreTag},
+      {"subg_64_addsub_immtags"_h,
+       &Disassembler::Disassemble_XdSP_XnSP_uimm6_uimm4},
+      {"subps_64s_dp_2src"_h, &Disassembler::Disassemble_Xd_XnSP_XmSP},
+      {"subp_64s_dp_2src"_h, &Disassembler::Disassemble_Xd_XnSP_XmSP},
+      {"cpyen_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyern_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyewn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpye_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfen_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfern_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfewn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfe_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfmn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfmrn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfmwn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfm_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfpn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfprn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfpwn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyfp_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpymn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpymrn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpymwn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpym_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpypn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyprn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpypwn_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"cpyp_cpy_memcms"_h, &Disassembler::DisassembleCpy},
+      {"seten_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"sete_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"setgen_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"setge_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"setgmn_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"setgm_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"setgpn_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"setgp_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"setmn_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"setm_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"setpn_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"setp_set_memcms"_h, &Disassembler::DisassembleSet},
+      {"abs_32_dp_1src"_h, &Disassembler::VisitDataProcessing1Source},
+      {"abs_64_dp_1src"_h, &Disassembler::VisitDataProcessing1Source},
+      {"cnt_32_dp_1src"_h, &Disassembler::VisitDataProcessing1Source},
+      {"cnt_64_dp_1src"_h, &Disassembler::VisitDataProcessing1Source},
+      {"ctz_32_dp_1src"_h, &Disassembler::VisitDataProcessing1Source},
+      {"ctz_64_dp_1src"_h, &Disassembler::VisitDataProcessing1Source},
+      {"smax_32_dp_2src"_h, &Disassembler::VisitDataProcessing2Source},
+      {"smax_64_dp_2src"_h, &Disassembler::VisitDataProcessing2Source},
+      {"smin_32_dp_2src"_h, &Disassembler::VisitDataProcessing2Source},
+      {"smin_64_dp_2src"_h, &Disassembler::VisitDataProcessing2Source},
+      {"umax_32_dp_2src"_h, &Disassembler::VisitDataProcessing2Source},
+      {"umax_64_dp_2src"_h, &Disassembler::VisitDataProcessing2Source},
+      {"umin_32_dp_2src"_h, &Disassembler::VisitDataProcessing2Source},
+      {"umin_64_dp_2src"_h, &Disassembler::VisitDataProcessing2Source},
+      {"smax_32_minmax_imm"_h, &Disassembler::DisassembleMinMaxImm},
+      {"smax_64_minmax_imm"_h, &Disassembler::DisassembleMinMaxImm},
+      {"smin_32_minmax_imm"_h, &Disassembler::DisassembleMinMaxImm},
+      {"smin_64_minmax_imm"_h, &Disassembler::DisassembleMinMaxImm},
+      {"umax_32u_minmax_imm"_h, &Disassembler::DisassembleMinMaxImm},
+      {"umax_64u_minmax_imm"_h, &Disassembler::DisassembleMinMaxImm},
+      {"umin_32u_minmax_imm"_h, &Disassembler::DisassembleMinMaxImm},
+      {"umin_64u_minmax_imm"_h, &Disassembler::DisassembleMinMaxImm},
   };
   return &form_to_visitor;
 }  // NOLINT(readability/fn_size)
@@ -744,6 +824,12 @@ void Disassembler::VisitAddSubShifted(const Instruction *instr) {
   const char *form = "'Rd, 'Rn, 'Rm'NDP";
   const char *form_cmp = "'Rn, 'Rm'NDP";
   const char *form_neg = "'Rd, 'Rm'NDP";
+
+  if (instr->GetShiftDP() == ROR) {
+    // Add/sub/adds/subs don't allow ROR as a shift mode.
+    VisitUnallocated(instr);
+    return;
+  }
 
   switch (form_hash_) {
     case "adds_32_addsub_shift"_h:
@@ -1352,6 +1438,10 @@ void Disassembler::VisitDataProcessing3Source(const Instruction *instr) {
   Format(instr, mnemonic, form);
 }
 
+void Disassembler::DisassembleMinMaxImm(const Instruction *instr) {
+  const char *suffix = (instr->ExtractBit(18) == 0) ? "'s1710" : "'u1710";
+  FormatWithDecodedMnemonic(instr, "'Rd, 'Rn, #", suffix);
+}
 
 void Disassembler::VisitCompareBranch(const Instruction *instr) {
   FormatWithDecodedMnemonic(instr, "'Rt, 'TImmCmpa");
@@ -1937,7 +2027,6 @@ void Disassembler::VisitSystem(const Instruction *instr) {
     case "mrs_rs_systemmove"_h:
       form = "'Xt, 'IY";
       break;
-    case "msr_si_pstate"_h:
     case "msr_sr_systemmove"_h:
       form = "'IY, 'Xt";
       break;
@@ -1960,44 +2049,59 @@ void Disassembler::VisitSystem(const Instruction *instr) {
     case "hint_hm_hints"_h:
       form = "'IH";
       break;
-    case "dmb_bo_barriers"_h:
-    case "dsb_bo_barriers"_h:
+    case Hash("dmb_bo_barriers"):
       form = "'M";
       break;
-    case "sys_cr_systeminstrs"_h:
+    case Hash("dsb_bo_barriers"): {
+      int crm = instr->GetCRm();
+      if (crm == 0) {
+        mnemonic = "ssbb";
+        form = "";
+      } else if (crm == 4) {
+        mnemonic = "pssbb";
+        form = "";
+      } else {
+        form = "'M";
+      }
+      break;
+    }
+    case Hash("sys_cr_systeminstrs"): {
       mnemonic = "dc";
       suffix = ", 'Xt";
-      switch (instr->GetSysOp()) {
-        case IVAU:
+
+      const std::map<uint32_t, const char *> dcop = {
+          {IVAU, "ivau"},
+          {CVAC, "cvac"},
+          {CVAU, "cvau"},
+          {CVAP, "cvap"},
+          {CVADP, "cvadp"},
+          {CIVAC, "civac"},
+          {ZVA, "zva"},
+          {GVA, "gva"},
+          {GZVA, "gzva"},
+          {CGVAC, "cgvac"},
+          {CGDVAC, "cgdvac"},
+          {CGVAP, "cgvap"},
+          {CGDVAP, "cgdvap"},
+          {CIGVAC, "cigvac"},
+          {CIGDVAC, "cigdvac"},
+      };
+
+      uint32_t sysop = instr->GetSysOp();
+      if (dcop.count(sysop)) {
+        if (sysop == IVAU) {
           mnemonic = "ic";
-          form = "ivau";
-          break;
-        case CVAC:
-          form = "cvac";
-          break;
-        case CVAU:
-          form = "cvau";
-          break;
-        case CVAP:
-          form = "cvap";
-          break;
-        case CVADP:
-          form = "cvadp";
-          break;
-        case CIVAC:
-          form = "civac";
-          break;
-        case ZVA:
-          form = "zva";
-          break;
-        default:
-          mnemonic = "sys";
-          form = "'G1, 'Kn, 'Km, 'G2";
-          if (instr->GetRt() == 31) {
-            suffix = NULL;
-          }
-          break;
+        }
+        form = dcop.at(sysop);
+      } else {
+        mnemonic = "sys";
+        form = "'G1, 'Kn, 'Km, 'G2";
+        if (instr->GetRt() == 31) {
+          suffix = NULL;
+        }
+        break;
       }
+    }
   }
   Format(instr, mnemonic, form, suffix);
 }
@@ -2377,7 +2481,7 @@ void Disassembler::VisitNEONAcrossLanes(const Instruction *instr) {
 }
 
 void Disassembler::VisitNEONByIndexedElement(const Instruction *instr) {
-  const char *form = "'Vd.%s, 'Vn.%s, 'Ve.%s['IVByElemIndex]";
+  const char *form = "'Vd.%s, 'Vn.%s, 'Vf.%s['IVByElemIndex]";
   static const NEONFormatMap map_v =
       {{23, 22, 30},
        {NF_UNDEF, NF_UNDEF, NF_4H, NF_8H, NF_2S, NF_4S, NF_UNDEF, NF_UNDEF}};
@@ -2388,7 +2492,7 @@ void Disassembler::VisitNEONByIndexedElement(const Instruction *instr) {
 }
 
 void Disassembler::DisassembleNEONMulByElementLong(const Instruction *instr) {
-  const char *form = "'Vd.%s, 'Vn.%s, 'Ve.%s['IVByElemIndex]";
+  const char *form = "'Vd.%s, 'Vn.%s, 'Vf.%s['IVByElemIndex]";
   // TODO: Disallow undefined element types for this instruction.
   static const NEONFormatMap map_ta = {{23, 22}, {NF_UNDEF, NF_4S, NF_2D}};
   NEONFormatDecoder nfd(instr,
@@ -2405,7 +2509,7 @@ void Disassembler::DisassembleNEONDotProdByElement(const Instruction *instr) {
 }
 
 void Disassembler::DisassembleNEONFPMulByElement(const Instruction *instr) {
-  const char *form = "'Vd.%s, 'Vn.%s, 'Ve.%s['IVByElemIndex]";
+  const char *form = "'Vd.%s, 'Vn.%s, 'Vf.%s['IVByElemIndex]";
   NEONFormatDecoder nfd(instr,
                         NEONFormatDecoder::FPFormatMap(),
                         NEONFormatDecoder::FPFormatMap(),
@@ -2427,7 +2531,7 @@ void Disassembler::DisassembleNEONFPMulByElementLong(const Instruction *instr) {
 
 void Disassembler::DisassembleNEONComplexMulByElement(
     const Instruction *instr) {
-  const char *form = "'Vd.%s, 'Vn.%s, 'Ve.%s['IVByElemIndexRot], #'u1413*90";
+  const char *form = "'Vd.%s, 'Vn.%s, 'Vm.%s['IVByElemIndexRot], #'u1413*90";
   // TODO: Disallow undefined element types for this instruction.
   static const NEONFormatMap map_cn =
       {{23, 22, 30},
@@ -3214,7 +3318,7 @@ void Disassembler::VisitNEONScalar3SameExtra(const Instruction *instr) {
 void Disassembler::DisassembleNEONScalarSatMulLongIndex(
     const Instruction *instr) {
   const char *mnemonic = mnemonic_.c_str();
-  const char *form = "%sd, %sn, 'Ve.%s['IVByElemIndex]";
+  const char *form = "%sd, %sn, 'Vf.%s['IVByElemIndex]";
   NEONFormatDecoder nfd(instr,
                         NEONFormatDecoder::LongScalarFormatMap(),
                         NEONFormatDecoder::ScalarFormatMap());
@@ -3228,7 +3332,7 @@ void Disassembler::DisassembleNEONScalarSatMulLongIndex(
 
 void Disassembler::DisassembleNEONFPScalarMulIndex(const Instruction *instr) {
   const char *mnemonic = mnemonic_.c_str();
-  const char *form = "%sd, %sn, 'Ve.%s['IVByElemIndex]";
+  const char *form = "%sd, %sn, 'Vf.%s['IVByElemIndex]";
   static const NEONFormatMap map = {{23, 22}, {NF_H, NF_UNDEF, NF_S, NF_D}};
   NEONFormatDecoder nfd(instr, &map);
   Format(instr,
@@ -3238,7 +3342,7 @@ void Disassembler::DisassembleNEONFPScalarMulIndex(const Instruction *instr) {
 
 void Disassembler::VisitNEONScalarByIndexedElement(const Instruction *instr) {
   const char *mnemonic = mnemonic_.c_str();
-  const char *form = "%sd, %sn, 'Ve.%s['IVByElemIndex]";
+  const char *form = "%sd, %sn, 'Vf.%s['IVByElemIndex]";
   NEONFormatDecoder nfd(instr, NEONFormatDecoder::ScalarFormatMap());
   VectorFormat vform_dst = nfd.GetVectorFormat(0);
   if ((vform_dst == kFormatB) || (vform_dst == kFormatD)) {
@@ -5866,6 +5970,137 @@ void Disassembler::Disassemble_ZtS_Pg_ZnS_Xm(const Instruction *instr) {
   Format(instr, mnemonic_.c_str(), form, suffix);
 }
 
+void Disassembler::Disassemble_XdSP_XnSP_Xm(const Instruction *instr) {
+  const char *form = "'Xds, 'Xns";
+  const char *suffix = instr->GetRm() == 31 ? "" : ", 'Xm";
+  Format(instr, mnemonic_.c_str(), form, suffix);
+}
+
+void Disassembler::Disassemble_XdSP_XnSP_uimm6_uimm4(const Instruction *instr) {
+  VIXL_STATIC_ASSERT(kMTETagGranuleInBytes == 16);
+  const char *form = "'Xds, 'Xns, #'u2116*16, #'u1310";
+  Format(instr, mnemonic_.c_str(), form);
+}
+
+void Disassembler::Disassemble_Xd_XnSP_Xm(const Instruction *instr) {
+  const char *form = "'Rd, 'Xns, 'Rm";
+  Format(instr, mnemonic_.c_str(), form);
+}
+
+void Disassembler::Disassemble_Xd_XnSP_XmSP(const Instruction *instr) {
+  if ((form_hash_ == Hash("subps_64s_dp_2src")) && (instr->GetRd() == 31)) {
+    Format(instr, "cmpp", "'Xns, 'Xms");
+  } else {
+    const char *form = "'Xd, 'Xns, 'Xms";
+    Format(instr, mnemonic_.c_str(), form);
+  }
+}
+
+void Disassembler::DisassembleMTEStoreTagPair(const Instruction *instr) {
+  const char *form = "'Xt, 'Xt2, ['Xns";
+  const char *suffix = NULL;
+  switch (form_hash_) {
+    case Hash("stgp_64_ldstpair_off"):
+      suffix = ", #'s2115*16]";
+      break;
+    case Hash("stgp_64_ldstpair_post"):
+      suffix = "], #'s2115*16";
+      break;
+    case Hash("stgp_64_ldstpair_pre"):
+      suffix = ", #'s2115*16]!";
+      break;
+    default:
+      mnemonic_ = "unimplemented";
+      break;
+  }
+
+  if (instr->GetImmLSPair() == 0) {
+    suffix = "]";
+  }
+
+  Format(instr, mnemonic_.c_str(), form, suffix);
+}
+
+void Disassembler::DisassembleMTEStoreTag(const Instruction *instr) {
+  const char *form = "'Xds, ['Xns";
+  const char *suffix = NULL;
+  switch (form_hash_) {
+    case Hash("st2g_64soffset_ldsttags"):
+    case Hash("stg_64soffset_ldsttags"):
+    case Hash("stz2g_64soffset_ldsttags"):
+    case Hash("stzg_64soffset_ldsttags"):
+      suffix = ", #'s2012*16]";
+      break;
+    case Hash("st2g_64spost_ldsttags"):
+    case Hash("stg_64spost_ldsttags"):
+    case Hash("stz2g_64spost_ldsttags"):
+    case Hash("stzg_64spost_ldsttags"):
+      suffix = "], #'s2012*16";
+      break;
+    case Hash("st2g_64spre_ldsttags"):
+    case Hash("stg_64spre_ldsttags"):
+    case Hash("stz2g_64spre_ldsttags"):
+    case Hash("stzg_64spre_ldsttags"):
+      suffix = ", #'s2012*16]!";
+      break;
+    default:
+      mnemonic_ = "unimplemented";
+      break;
+  }
+
+  if (instr->GetImmLS() == 0) {
+    suffix = "]";
+  }
+
+  Format(instr, mnemonic_.c_str(), form, suffix);
+}
+
+void Disassembler::DisassembleMTELoadTag(const Instruction *instr) {
+  const char *form =
+      (instr->GetImmLS() == 0) ? "'Xt, ['Xns]" : "'Xt, ['Xns, #'s2012*16]";
+  Format(instr, mnemonic_.c_str(), form);
+}
+
+void Disassembler::DisassembleCpy(const Instruction *instr) {
+  const char *form = "['Xd]!, ['Xs]!, 'Xn!";
+
+  int d = instr->GetRd();
+  int n = instr->GetRn();
+  int s = instr->GetRs();
+
+  // Aliased registers and sp/zr are disallowed.
+  if ((d == n) || (d == s) || (n == s) || (d == 31) || (n == 31) || (s == 31)) {
+    form = NULL;
+  }
+
+  // Bits 31 and 30 must be zero.
+  if (instr->ExtractBits(31, 30)) {
+    form = NULL;
+  }
+
+  Format(instr, mnemonic_.c_str(), form);
+}
+
+void Disassembler::DisassembleSet(const Instruction *instr) {
+  const char *form = "['Xd]!, 'Xn!, 'Xs";
+
+  int d = instr->GetRd();
+  int n = instr->GetRn();
+  int s = instr->GetRs();
+
+  // Aliased registers are disallowed. Only Xs may be xzr.
+  if ((d == n) || (d == s) || (n == s) || (d == 31) || (n == 31)) {
+    form = NULL;
+  }
+
+  // Bits 31 and 30 must be zero.
+  if (instr->ExtractBits(31, 30)) {
+    form = NULL;
+  }
+
+  Format(instr, mnemonic_.c_str(), form);
+}
+
 void Disassembler::ProcessOutput(const Instruction * /*instr*/) {
   // The base disasm does nothing more than disassembling into a buffer.
 }
@@ -5918,7 +6153,7 @@ void Disassembler::AppendPCRelativeOffsetToOutput(const Instruction *instr,
   USE(instr);
   if (offset < 0) {
     // Cast to uint64_t so that INT64_MIN is handled in a well-defined way.
-    uint64_t abs_offset = -static_cast<uint64_t>(offset);
+    uint64_t abs_offset = UnsignedNegate(static_cast<uint64_t>(offset));
     AppendToOutput("#-0x%" PRIx64, abs_offset);
   } else {
     AppendToOutput("#+0x%" PRIx64, offset);
@@ -6099,6 +6334,12 @@ std::pair<unsigned, unsigned> Disassembler::GetRegNumForField(
       // by-element instructions.
       reg_num = instr->GetRmLow16();
       break;
+    case 'f':
+      // This is register Rm, but using an element size dependent number of bits
+      // in the register specifier.
+      reg_num =
+          (instr->GetNEONSize() < 2) ? instr->GetRmLow16() : instr->GetRm();
+      break;
     case 'a':
       reg_num = instr->GetRa();
       break;
@@ -6156,7 +6397,7 @@ int Disassembler::SubstituteRegisterField(const Instruction *instr,
   const char *reg_field = &format[1];
 
   if (reg_prefix == 'R') {
-    bool is_x = instr->GetSixtyFourBits();
+    bool is_x = instr->GetSixtyFourBits() == 1;
     if (strspn(reg_field, "0123456789") == 2) {  // r20d, r31n, etc.
       // Core W or X registers where the type is determined by a specified bit
       // position, eg. 'R20d, 'R05n. This is like the 'Rd syntax, where bit 31
@@ -6187,7 +6428,7 @@ int Disassembler::SubstituteRegisterField(const Instruction *instr,
         field_len = 3;
         char *eimm;
         int imm = static_cast<int>(strtol(&reg_field[2], &eimm, 10));
-        field_len += eimm - &reg_field[2];
+        field_len += static_cast<unsigned>(eimm - &reg_field[2]);
         if (reg_num == 31) {
           switch (reg_field[1]) {
             case 'z':
@@ -6381,12 +6622,12 @@ int Disassembler::SubstituteImmediateField(const Instruction *instr,
     }
     case 'F': {  // IFP, IFPNeon, IFPSve or IFPFBits.
       int imm8 = 0;
-      int len = strlen("IFP");
+      size_t len = strlen("IFP");
       switch (format[3]) {
         case 'F':
           VIXL_ASSERT(strncmp(format, "IFPFBits", strlen("IFPFBits")) == 0);
           AppendToOutput("#%" PRId32, 64 - instr->GetFPScale());
-          return strlen("IFPFBits");
+          return static_cast<int>(strlen("IFPFBits"));
         case 'N':
           VIXL_ASSERT(strncmp(format, "IFPNeon", strlen("IFPNeon")) == 0);
           imm8 = instr->GetImmNEONabcdefgh();
@@ -6405,7 +6646,7 @@ int Disassembler::SubstituteImmediateField(const Instruction *instr,
       AppendToOutput("#0x%" PRIx32 " (%.4f)",
                      imm8,
                      Instruction::Imm8ToFP32(imm8));
-      return len;
+      return static_cast<int>(len);
     }
     case 'H': {  // IH - ImmHint
       AppendToOutput("#%" PRId32, instr->GetImmHint());
@@ -6532,7 +6773,7 @@ int Disassembler::SubstituteImmediateField(const Instruction *instr,
           return 9;
         }
         case 'B': {  // IVByElemIndex.
-          int ret = strlen("IVByElemIndex");
+          int ret = static_cast<int>(strlen("IVByElemIndex"));
           uint32_t vm_index = instr->GetNEONH() << 2;
           vm_index |= instr->GetNEONL() << 1;
           vm_index |= instr->GetNEONM();
@@ -6571,12 +6812,12 @@ int Disassembler::SubstituteImmediateField(const Instruction *instr,
               rn_index = imm4 >> tz;
               if (strncmp(format, "IVInsIndex1", strlen("IVInsIndex1")) == 0) {
                 AppendToOutput("%d", rd_index);
-                return strlen("IVInsIndex1");
+                return static_cast<int>(strlen("IVInsIndex1"));
               } else if (strncmp(format,
                                  "IVInsIndex2",
                                  strlen("IVInsIndex2")) == 0) {
                 AppendToOutput("%d", rn_index);
-                return strlen("IVInsIndex2");
+                return static_cast<int>(strlen("IVInsIndex2"));
               }
             }
             return 0;
@@ -6586,7 +6827,7 @@ int Disassembler::SubstituteImmediateField(const Instruction *instr,
             std::pair<int, int> index_and_lane_size =
                 instr->GetSVEPermuteIndexAndLaneSizeLog2();
             AppendToOutput("%d", index_and_lane_size.first);
-            return strlen("IVInsSVEIndex");
+            return static_cast<int>(strlen("IVInsSVEIndex"));
           }
           VIXL_FALLTHROUGH();
         }
@@ -6598,31 +6839,31 @@ int Disassembler::SubstituteImmediateField(const Instruction *instr,
           if (strncmp(format, "IVMIImm8", strlen("IVMIImm8")) == 0) {
             uint64_t imm8 = instr->GetImmNEONabcdefgh();
             AppendToOutput("#0x%" PRIx64, imm8);
-            return strlen("IVMIImm8");
+            return static_cast<int>(strlen("IVMIImm8"));
           } else if (strncmp(format, "IVMIImm", strlen("IVMIImm")) == 0) {
             uint64_t imm8 = instr->GetImmNEONabcdefgh();
             uint64_t imm = 0;
             for (int i = 0; i < 8; ++i) {
-              if (imm8 & (1 << i)) {
+              if (imm8 & (UINT64_C(1) << i)) {
                 imm |= (UINT64_C(0xff) << (8 * i));
               }
             }
             AppendToOutput("#0x%" PRIx64, imm);
-            return strlen("IVMIImm");
+            return static_cast<int>(strlen("IVMIImm"));
           } else if (strncmp(format,
                              "IVMIShiftAmt1",
                              strlen("IVMIShiftAmt1")) == 0) {
             int cmode = instr->GetNEONCmode();
             int shift_amount = 8 * ((cmode >> 1) & 3);
             AppendToOutput("#%d", shift_amount);
-            return strlen("IVMIShiftAmt1");
+            return static_cast<int>(strlen("IVMIShiftAmt1"));
           } else if (strncmp(format,
                              "IVMIShiftAmt2",
                              strlen("IVMIShiftAmt2")) == 0) {
             int cmode = instr->GetNEONCmode();
             int shift_amount = 8 << (cmode & 1);
             AppendToOutput("#%d", shift_amount);
-            return strlen("IVMIShiftAmt2");
+            return static_cast<int>(strlen("IVMIShiftAmt2"));
           } else {
             VIXL_UNIMPLEMENTED();
             return 0;
@@ -7129,7 +7370,7 @@ int Disassembler::SubstituteIntField(const Instruction *instr,
     uint64_t value = strtoul(c + 1, &new_c, 10);
     c = new_c;
     VIXL_ASSERT(IsInt32(value));
-    bits += value;
+    bits = static_cast<int32_t>(bits + value);
   } else if (*c == '*') {
     // Similarly, a "*n" trailing the format specifier indicates the extracted
     // value should be multiplied by n. This is for cases where the encoded
@@ -7138,7 +7379,7 @@ int Disassembler::SubstituteIntField(const Instruction *instr,
     uint64_t value = strtoul(c + 1, &new_c, 10);
     c = new_c;
     VIXL_ASSERT(IsInt32(value));
-    bits *= value;
+    bits = static_cast<int32_t>(bits * value);
   }
 
   AppendToOutput("%d", bits);
@@ -7290,7 +7531,7 @@ void PrintDisassembler::ProcessOutput(const Instruction *instr) {
   if (signed_addresses_) {
     if (address < 0) {
       sign = "-";
-      abs_address = -static_cast<uint64_t>(address);
+      abs_address = UnsignedNegate(static_cast<uint64_t>(address));
     } else {
       // Leave a leading space, to maintain alignment.
       sign = " ";

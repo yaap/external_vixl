@@ -287,7 +287,7 @@ TEST_SVE(sve_v_write_clear) {
                           CPUFeatures::kSVE);
   START();
 
-  // The Simulator has two mechansisms for writing V registers:
+  // The Simulator has two mechanisms for writing V registers:
   //  - Write*Register, calling through to SimRegisterBase::Write.
   //  - LogicVRegister::ClearForWrite followed by one or more lane updates.
   // Try to cover both variants.
@@ -4483,7 +4483,7 @@ static void IntBinArithHelper(Test* config,
   SVE_SETUP_WITH_FEATURES(CPUFeatures::kSVE);
   START();
 
-  ZRegister src_a = z31.WithLaneSize(lane_size_in_bits);
+  ZRegister src_a = z30.WithLaneSize(lane_size_in_bits);
   ZRegister src_b = z27.WithLaneSize(lane_size_in_bits);
   InsrHelper(&masm, src_a, zn_inputs);
   InsrHelper(&masm, src_b, zm_inputs);
@@ -7244,7 +7244,7 @@ TEST_SVE(sve_ld2_st2_scalar_plus_imm) {
   uint8_t* data = new uint8_t[data_size];
   memset(data, 0, data_size);
 
-  // Set the base half-way through the buffer so we can use negative indeces.
+  // Set the base half-way through the buffer so we can use negative indices.
   __ Mov(x0, reinterpret_cast<uintptr_t>(&data[data_size / 2]));
 
   __ Index(z14.VnB(), 1, -3);
@@ -7416,7 +7416,7 @@ TEST_SVE(sve_ld2_st2_scalar_plus_scalar) {
   uint8_t* data = new uint8_t[data_size];
   memset(data, 0, data_size);
 
-  // Set the base half-way through the buffer so we can use negative indeces.
+  // Set the base half-way through the buffer so we can use negative indices.
   __ Mov(x0, reinterpret_cast<uintptr_t>(&data[data_size / 2]));
 
   __ Index(z10.VnB(), -4, 11);
@@ -7589,7 +7589,7 @@ TEST_SVE(sve_ld3_st3_scalar_plus_imm) {
   uint8_t* data = new uint8_t[data_size];
   memset(data, 0, data_size);
 
-  // Set the base half-way through the buffer so we can use negative indeces.
+  // Set the base half-way through the buffer so we can use negative indices.
   __ Mov(x0, reinterpret_cast<uintptr_t>(&data[data_size / 2]));
 
   // We can test ld3 by comparing the values loaded with the values stored.
@@ -7795,7 +7795,7 @@ TEST_SVE(sve_ld3_st3_scalar_plus_scalar) {
   uint8_t* data = new uint8_t[data_size];
   memset(data, 0, data_size);
 
-  // Set the base half-way through the buffer so we can use negative indeces.
+  // Set the base half-way through the buffer so we can use negative indices.
   __ Mov(x0, reinterpret_cast<uintptr_t>(&data[data_size / 2]));
 
   // We can test ld3 by comparing the values loaded with the values stored.
@@ -8009,7 +8009,7 @@ TEST_SVE(sve_ld4_st4_scalar_plus_imm) {
   uint8_t* data = new uint8_t[data_size];
   memset(data, 0, data_size);
 
-  // Set the base half-way through the buffer so we can use negative indeces.
+  // Set the base half-way through the buffer so we can use negative indices.
   __ Mov(x0, reinterpret_cast<uintptr_t>(&data[data_size / 2]));
 
   // We can test ld4 by comparing the values loaded with the values stored.
@@ -8259,7 +8259,7 @@ TEST_SVE(sve_ld4_st4_scalar_plus_scalar) {
   uint8_t* data = new uint8_t[data_size];
   memset(data, 0, data_size);
 
-  // Set the base half-way through the buffer so we can use negative indeces.
+  // Set the base half-way through the buffer so we can use negative indices.
   __ Mov(x0, reinterpret_cast<uintptr_t>(&data[data_size / 2]));
 
   // We can test ld4 by comparing the values loaded with the values stored.
@@ -15382,7 +15382,7 @@ static void TestFcvtFrintHelper(Test* config,
   PRegisterWithLaneSize pg_all_active = p0.WithLaneSize(lane_size_in_bits);
   __ Ptrue(pg_all_active);
 
-  // Test floating-point conversions with all lanes actived.
+  // Test floating-point conversions with all lanes activated.
   (masm.*macro_m)(zd_all_active.WithLaneSize(dst_type_size_in_bits),
                   pg_all_active.Merging(),
                   zn.WithLaneSize(src_type_size_in_bits));
@@ -15936,7 +15936,7 @@ static void TestUScvtfHelper(Test* config,
   PRegisterWithLaneSize pg_all_active = p0.WithLaneSize(lane_size_in_bits);
   __ Ptrue(pg_all_active);
 
-  // Test integer conversions with all lanes actived.
+  // Test integer conversions with all lanes activated.
   __ Scvtf(zd_scvtf_all_active.WithLaneSize(dst_type_size_in_bits),
            pg_all_active.Merging(),
            zn.WithLaneSize(src_type_size_in_bits));
@@ -16006,7 +16006,7 @@ TEST_SVE(scvtf_ucvtf_h_s_d_to_float16) {
   // clang-format off
   CvtfTestDataSet data_set_1[] = {
     // Simple conversions of positive numbers which require no rounding; the
-    // results should not depened on the rounding mode, and ucvtf and scvtf should
+    // results should not depend on the rounding mode, and ucvtf and scvtf should
     // produce the same result.
     {0x0000, 0x0000, 0x0000},
     {0x0001, 0x3c00, 0x3c00},
@@ -16062,7 +16062,7 @@ TEST_SVE(scvtf_ucvtf_s_to_float) {
   int src_lane_size = kSRegSize;
 
   // Simple conversions of positive numbers which require no rounding; the
-  // results should not depened on the rounding mode, and ucvtf and scvtf should
+  // results should not depend on the rounding mode, and ucvtf and scvtf should
   // produce the same result.
   CvtfTestDataSet data_set_1[] = {
     {0x00000000, 0x00000000, 0x00000000},
@@ -16118,7 +16118,7 @@ TEST_SVE(scvtf_ucvtf_d_to_float) {
   int src_lane_size = kDRegSize;
 
   // Simple conversions of positive numbers which require no rounding; the
-  // results should not depened on the rounding mode, and ucvtf and scvtf should
+  // results should not depend on the rounding mode, and ucvtf and scvtf should
   // produce the same result.
   CvtfTestDataSet data_set_1[] = {
     {0x0000000000000000, 0x00000000, 0x00000000},
@@ -16178,7 +16178,7 @@ TEST_SVE(scvtf_ucvtf_d_to_double) {
   int src_lane_size = kDRegSize;
 
   // Simple conversions of positive numbers which require no rounding; the
-  // results should not depened on the rounding mode, and ucvtf and scvtf should
+  // results should not depend on the rounding mode, and ucvtf and scvtf should
   // produce the same result.
   CvtfTestDataSet data_set_1[] = {
     {0x0000000000000000, 0x0000000000000000, 0x0000000000000000},
@@ -16237,7 +16237,7 @@ TEST_SVE(scvtf_ucvtf_s_to_double) {
   int src_lane_size = kSRegSize;
 
   // Simple conversions of positive numbers which require no rounding; the
-  // results should not depened on the rounding mode, and ucvtf and scvtf should
+  // results should not depend on the rounding mode, and ucvtf and scvtf should
   // produce the same result.
   CvtfTestDataSet data_set_1[] = {
     {0x00000000, 0x0000000000000000, 0x0000000000000000},
@@ -18122,7 +18122,7 @@ static void TestFPUnaryPredicatedHelper(Test* config,
                               macro_m,
                               macro_z);
 
-  // The complementary of above precicate to get full input coverage.
+  // The complementary of above predicate to get full input coverage.
   uint64_t pg_c_inputs[] = {0x5aa55aa55aa55aa5,
                             0x5aa55aa55aa55aa5,
                             0x5aa55aa55aa55aa5,
@@ -19732,10 +19732,238 @@ TEST_SVE(sudot_usdot) {
   }
 }
 
+TEST_SVE(sve_load_store_sp_base_regression_test) {
+  SVE_SETUP_WITH_FEATURES(CPUFeatures::kSVE);
+  START();
+
+  __ Mov(x0, 0);
+  __ Mov(z0.VnB(), 0);
+  __ Ptrue(p0.VnB());
+
+  Label loop;
+  __ Mov(x1, 128);
+  __ Bind(&loop);
+  __ Push(xzr, xzr);
+  __ Sub(x1, x1, 1);
+  __ Cbnz(x1, &loop);
+
+  {
+    ExactAssemblyScope scope(&masm, 193 * kInstructionSize);
+
+    __ dci(0xa420a3e0);  // ld1b {z0.h}, p0/z, [sp]
+    __ dci(0xa440a3e0);  // ld1b {z0.s}, p0/z, [sp]
+    __ dci(0xa460a3e0);  // ld1b {z0.d}, p0/z, [sp]
+    __ dci(0xa400a3e0);  // ld1b {z0.b}, p0/z, [sp]
+    __ dci(0xa42043e0);  // ld1b {z0.h}, p0/z, [sp, x0]
+    __ dci(0xa44043e0);  // ld1b {z0.s}, p0/z, [sp, x0]
+    __ dci(0xa46043e0);  // ld1b {z0.d}, p0/z, [sp, x0]
+    __ dci(0xa40043e0);  // ld1b {z0.b}, p0/z, [sp, x0]
+    __ dci(0xc440c3e0);  // ld1b {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa5e0a3e0);  // ld1d {z0.d}, p0/z, [sp]
+    __ dci(0xa5e043e0);  // ld1d {z0.d}, p0/z, [sp, x0, lsl #3]
+    __ dci(0xc5e0c3e0);  // ld1d {z0.d}, p0/z, [sp, z0.d, lsl #3]
+    __ dci(0xc5c0c3e0);  // ld1d {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa4a0a3e0);  // ld1h {z0.h}, p0/z, [sp]
+    __ dci(0xa4c0a3e0);  // ld1h {z0.s}, p0/z, [sp]
+    __ dci(0xa4e0a3e0);  // ld1h {z0.d}, p0/z, [sp]
+    __ dci(0xa4a043e0);  // ld1h {z0.h}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xa4c043e0);  // ld1h {z0.s}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xa4e043e0);  // ld1h {z0.d}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xc4e0c3e0);  // ld1h {z0.d}, p0/z, [sp, z0.d, lsl #1]
+    __ dci(0xc4c0c3e0);  // ld1h {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0x8440a3e0);  // ld1rb {z0.h}, p0/z, [sp]
+    __ dci(0x8440c3e0);  // ld1rb {z0.s}, p0/z, [sp]
+    __ dci(0x8440e3e0);  // ld1rb {z0.d}, p0/z, [sp]
+    __ dci(0x844083e0);  // ld1rb {z0.b}, p0/z, [sp]
+    __ dci(0x85c0e3e0);  // ld1rd {z0.d}, p0/z, [sp]
+    __ dci(0x84c0a3e0);  // ld1rh {z0.h}, p0/z, [sp]
+    __ dci(0x84c0c3e0);  // ld1rh {z0.s}, p0/z, [sp]
+    __ dci(0x84c0e3e0);  // ld1rh {z0.d}, p0/z, [sp]
+    __ dci(0xa40023e0);  // ld1rqb {z0.b}, p0/z, [sp]
+    __ dci(0xa40003e0);  // ld1rqb {z0.b}, p0/z, [sp, x0]
+    __ dci(0xa58023e0);  // ld1rqd {z0.d}, p0/z, [sp]
+    __ dci(0xa58003e0);  // ld1rqd {z0.d}, p0/z, [sp, x0, lsl #3]
+    __ dci(0xa48023e0);  // ld1rqh {z0.h}, p0/z, [sp]
+    __ dci(0xa48003e0);  // ld1rqh {z0.h}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xa50023e0);  // ld1rqw {z0.s}, p0/z, [sp]
+    __ dci(0xa50003e0);  // ld1rqw {z0.s}, p0/z, [sp, x0, lsl #2]
+    __ dci(0x85c0c3e0);  // ld1rsb {z0.h}, p0/z, [sp]
+    __ dci(0x85c0a3e0);  // ld1rsb {z0.s}, p0/z, [sp]
+    __ dci(0x85c083e0);  // ld1rsb {z0.d}, p0/z, [sp]
+    __ dci(0x8540a3e0);  // ld1rsh {z0.s}, p0/z, [sp]
+    __ dci(0x854083e0);  // ld1rsh {z0.d}, p0/z, [sp]
+    __ dci(0x84c083e0);  // ld1rsw {z0.d}, p0/z, [sp]
+    __ dci(0x8540c3e0);  // ld1rw {z0.s}, p0/z, [sp]
+    __ dci(0x8540e3e0);  // ld1rw {z0.d}, p0/z, [sp]
+    __ dci(0xa5c0a3e0);  // ld1sb {z0.h}, p0/z, [sp]
+    __ dci(0xa5a0a3e0);  // ld1sb {z0.s}, p0/z, [sp]
+    __ dci(0xa580a3e0);  // ld1sb {z0.d}, p0/z, [sp]
+    __ dci(0xa5c043e0);  // ld1sb {z0.h}, p0/z, [sp, x0]
+    __ dci(0xa5a043e0);  // ld1sb {z0.s}, p0/z, [sp, x0]
+    __ dci(0xa58043e0);  // ld1sb {z0.d}, p0/z, [sp, x0]
+    __ dci(0xc44083e0);  // ld1sb {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa520a3e0);  // ld1sh {z0.s}, p0/z, [sp]
+    __ dci(0xa500a3e0);  // ld1sh {z0.d}, p0/z, [sp]
+    __ dci(0xa52043e0);  // ld1sh {z0.s}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xa50043e0);  // ld1sh {z0.d}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xc4e083e0);  // ld1sh {z0.d}, p0/z, [sp, z0.d, lsl #1]
+    __ dci(0xc4c083e0);  // ld1sh {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa480a3e0);  // ld1sw {z0.d}, p0/z, [sp]
+    __ dci(0xa48043e0);  // ld1sw {z0.d}, p0/z, [sp, x0, lsl #2]
+    __ dci(0xc56083e0);  // ld1sw {z0.d}, p0/z, [sp, z0.d, lsl #2]
+    __ dci(0xc54083e0);  // ld1sw {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa540a3e0);  // ld1w {z0.s}, p0/z, [sp]
+    __ dci(0xa560a3e0);  // ld1w {z0.d}, p0/z, [sp]
+    __ dci(0xa54043e0);  // ld1w {z0.s}, p0/z, [sp, x0, lsl #2]
+    __ dci(0xa56043e0);  // ld1w {z0.d}, p0/z, [sp, x0, lsl #2]
+    __ dci(0xc560c3e0);  // ld1w {z0.d}, p0/z, [sp, z0.d, lsl #2]
+    __ dci(0xc540c3e0);  // ld1w {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa420e3e0);  // ld2b {z0.b, z1.b}, p0/z, [sp]
+    __ dci(0xa420c3e0);  // ld2b {z0.b, z1.b}, p0/z, [sp, x0]
+    __ dci(0xa5a0e3e0);  // ld2d {z0.d, z1.d}, p0/z, [sp]
+    __ dci(0xa5a0c3e0);  // ld2d {z0.d, z1.d}, p0/z, [sp, x0, lsl #3]
+    __ dci(0xa4a0e3e0);  // ld2h {z0.h, z1.h}, p0/z, [sp]
+    __ dci(0xa4a0c3e0);  // ld2h {z0.h, z1.h}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xa520e3e0);  // ld2w {z0.s, z1.s}, p0/z, [sp]
+    __ dci(0xa520c3e0);  // ld2w {z0.s, z1.s}, p0/z, [sp, x0, lsl #2]
+    __ dci(0xa440e3e0);  // ld3b {z0.b, z1.b, z2.b}, p0/z, [sp]
+    __ dci(0xa440c3e0);  // ld3b {z0.b, z1.b, z2.b}, p0/z, [sp, x0]
+    __ dci(0xa5c0e3e0);  // ld3d {z0.d, z1.d, z2.d}, p0/z, [sp]
+    __ dci(0xa5c0c3e0);  // ld3d {z0.d, z1.d, z2.d}, p0/z, [sp, x0, lsl #3]
+    __ dci(0xa4c0e3e0);  // ld3h {z0.h, z1.h, z2.h}, p0/z, [sp]
+    __ dci(0xa4c0c3e0);  // ld3h {z0.h, z1.h, z2.h}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xa540e3e0);  // ld3w {z0.s, z1.s, z2.s}, p0/z, [sp]
+    __ dci(0xa540c3e0);  // ld3w {z0.s, z1.s, z2.s}, p0/z, [sp, x0, lsl #2]
+    __ dci(0xa460e3e0);  // ld4b {z0.b, z1.b, z2.b, z3.b}, p0/z, [sp]
+    __ dci(0xa460c3e0);  // ld4b {z0.b, z1.b, z2.b, z3.b}, p0/z, [sp, x0]
+    __ dci(0xa5e0e3e0);  // ld4d {z0.d, z1.d, z2.d, z3.d}, p0/z, [sp]
+    __ dci(
+        0xa5e0c3e0);  // ld4d {z0.d, z1.d, z2.d, z3.d}, p0/z, [sp, x0, lsl #3]
+    __ dci(0xa4e0e3e0);  // ld4h {z0.h, z1.h, z2.h, z3.h}, p0/z, [sp]
+    __ dci(
+        0xa4e0c3e0);  // ld4h {z0.h, z1.h, z2.h, z3.h}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xa560e3e0);  // ld4w {z0.s, z1.s, z2.s, z3.s}, p0/z, [sp]
+    __ dci(
+        0xa560c3e0);  // ld4w {z0.s, z1.s, z2.s, z3.s}, p0/z, [sp, x0, lsl #2]
+    __ dci(0xa42063e0);  // ldff1b {z0.h}, p0/z, [sp, x0]
+    __ dci(0xa44063e0);  // ldff1b {z0.s}, p0/z, [sp, x0]
+    __ dci(0xa46063e0);  // ldff1b {z0.d}, p0/z, [sp, x0]
+    __ dci(0xa40063e0);  // ldff1b {z0.b}, p0/z, [sp, x0]
+    __ dci(0xc440e3e0);  // ldff1b {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa5e063e0);  // ldff1d {z0.d}, p0/z, [sp, x0, lsl #3]
+    __ dci(0xc5e0e3e0);  // ldff1d {z0.d}, p0/z, [sp, z0.d, lsl #3]
+    __ dci(0xc5c0e3e0);  // ldff1d {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa4a063e0);  // ldff1h {z0.h}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xa4c063e0);  // ldff1h {z0.s}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xa4e063e0);  // ldff1h {z0.d}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xc4e0e3e0);  // ldff1h {z0.d}, p0/z, [sp, z0.d, lsl #1]
+    __ dci(0xc4c0e3e0);  // ldff1h {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa5c063e0);  // ldff1sb {z0.h}, p0/z, [sp, x0]
+    __ dci(0xa5a063e0);  // ldff1sb {z0.s}, p0/z, [sp, x0]
+    __ dci(0xa58063e0);  // ldff1sb {z0.d}, p0/z, [sp, x0]
+    __ dci(0xc440a3e0);  // ldff1sb {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa52063e0);  // ldff1sh {z0.s}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xa50063e0);  // ldff1sh {z0.d}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xc4e0a3e0);  // ldff1sh {z0.d}, p0/z, [sp, z0.d, lsl #1]
+    __ dci(0xc4c0a3e0);  // ldff1sh {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa48063e0);  // ldff1sw {z0.d}, p0/z, [sp, x0, lsl #2]
+    __ dci(0xc560a3e0);  // ldff1sw {z0.d}, p0/z, [sp, z0.d, lsl #2]
+    __ dci(0xc540a3e0);  // ldff1sw {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa54063e0);  // ldff1w {z0.s}, p0/z, [sp, x0, lsl #2]
+    __ dci(0xa56063e0);  // ldff1w {z0.d}, p0/z, [sp, x0, lsl #2]
+    __ dci(0xc560e3e0);  // ldff1w {z0.d}, p0/z, [sp, z0.d, lsl #2]
+    __ dci(0xc540e3e0);  // ldff1w {z0.d}, p0/z, [sp, z0.d]
+    __ dci(0xa430a3e0);  // ldnf1b {z0.h}, p0/z, [sp]
+    __ dci(0xa450a3e0);  // ldnf1b {z0.s}, p0/z, [sp]
+    __ dci(0xa470a3e0);  // ldnf1b {z0.d}, p0/z, [sp]
+    __ dci(0xa410a3e0);  // ldnf1b {z0.b}, p0/z, [sp]
+    __ dci(0xa5f0a3e0);  // ldnf1d {z0.d}, p0/z, [sp]
+    __ dci(0xa4b0a3e0);  // ldnf1h {z0.h}, p0/z, [sp]
+    __ dci(0xa4d0a3e0);  // ldnf1h {z0.s}, p0/z, [sp]
+    __ dci(0xa4f0a3e0);  // ldnf1h {z0.d}, p0/z, [sp]
+    __ dci(0xa5d0a3e0);  // ldnf1sb {z0.h}, p0/z, [sp]
+    __ dci(0xa5b0a3e0);  // ldnf1sb {z0.s}, p0/z, [sp]
+    __ dci(0xa590a3e0);  // ldnf1sb {z0.d}, p0/z, [sp]
+    __ dci(0xa530a3e0);  // ldnf1sh {z0.s}, p0/z, [sp]
+    __ dci(0xa510a3e0);  // ldnf1sh {z0.d}, p0/z, [sp]
+    __ dci(0xa490a3e0);  // ldnf1sw {z0.d}, p0/z, [sp]
+    __ dci(0xa550a3e0);  // ldnf1w {z0.s}, p0/z, [sp]
+    __ dci(0xa570a3e0);  // ldnf1w {z0.d}, p0/z, [sp]
+    __ dci(0xa400e3e0);  // ldnt1b {z0.b}, p0/z, [sp]
+    __ dci(0xa400c3e0);  // ldnt1b {z0.b}, p0/z, [sp, x0]
+    __ dci(0xa580e3e0);  // ldnt1d {z0.d}, p0/z, [sp]
+    __ dci(0xa580c3e0);  // ldnt1d {z0.d}, p0/z, [sp, x0, lsl #3]
+    __ dci(0xa480e3e0);  // ldnt1h {z0.h}, p0/z, [sp]
+    __ dci(0xa480c3e0);  // ldnt1h {z0.h}, p0/z, [sp, x0, lsl #1]
+    __ dci(0xa500e3e0);  // ldnt1w {z0.s}, p0/z, [sp]
+    __ dci(0xa500c3e0);  // ldnt1w {z0.s}, p0/z, [sp, x0, lsl #2]
+    __ dci(0x858043e0);  // ldr z0, [sp]
+    __ dci(0xe400e3e0);  // st1b {z0.b}, p0, [sp]
+    __ dci(0xe40043e0);  // st1b {z0.b}, p0, [sp, x0]
+    __ dci(0xe400a3e0);  // st1b {z0.d}, p0, [sp, z0.d]
+    __ dci(0xe5e0e3e0);  // st1d {z0.d}, p0, [sp]
+    __ dci(0xe5e043e0);  // st1d {z0.d}, p0, [sp, x0, lsl #3]
+    __ dci(0xe5a0a3e0);  // st1d {z0.d}, p0, [sp, z0.d, lsl #3]
+    __ dci(0xe580a3e0);  // st1d {z0.d}, p0, [sp, z0.d]
+    __ dci(0xe4e0e3e0);  // st1h {z0.d}, p0, [sp]
+    __ dci(0xe4e043e0);  // st1h {z0.d}, p0, [sp, x0, lsl #1]
+    __ dci(0xe4a0a3e0);  // st1h {z0.d}, p0, [sp, z0.d, lsl #1]
+    __ dci(0xe480a3e0);  // st1h {z0.d}, p0, [sp, z0.d]
+    __ dci(0xe560e3e0);  // st1w {z0.d}, p0, [sp]
+    __ dci(0xe56043e0);  // st1w {z0.d}, p0, [sp, x0, lsl #2]
+    __ dci(0xe430e3e0);  // st2b {z0.b, z1.b}, p0, [sp]
+    __ dci(0xe42063e0);  // st2b {z0.b, z1.b}, p0, [sp, x0]
+    __ dci(0xe5b0e3e0);  // st2d {z0.d, z1.d}, p0, [sp]
+    __ dci(0xe5a063e0);  // st2d {z0.d, z1.d}, p0, [sp, x0, lsl #3]
+    __ dci(0xe4b0e3e0);  // st2h {z0.h, z1.h}, p0, [sp]
+    __ dci(0xe4a063e0);  // st2h {z0.h, z1.h}, p0, [sp, x0, lsl #1]
+    __ dci(0xe530e3e0);  // st2w {z0.s, z1.s}, p0, [sp]
+    __ dci(0xe52063e0);  // st2w {z0.s, z1.s}, p0, [sp, x0, lsl #2]
+    __ dci(0xe450e3e0);  // st3b {z0.b, z1.b, z2.b}, p0, [sp]
+    __ dci(0xe44063e0);  // st3b {z0.b, z1.b, z2.b}, p0, [sp, x0]
+    __ dci(0xe5d0e3e0);  // st3d {z0.d, z1.d, z2.d}, p0, [sp]
+    __ dci(0xe5c063e0);  // st3d {z0.d, z1.d, z2.d}, p0, [sp, x0, lsl #3]
+    __ dci(0xe4d0e3e0);  // st3h {z0.h, z1.h, z2.h}, p0, [sp]
+    __ dci(0xe4c063e0);  // st3h {z0.h, z1.h, z2.h}, p0, [sp, x0, lsl #1]
+    __ dci(0xe550e3e0);  // st3w {z0.s, z1.s, z2.s}, p0, [sp]
+    __ dci(0xe54063e0);  // st3w {z0.s, z1.s, z2.s}, p0, [sp, x0, lsl #2]
+    __ dci(0xe470e3e0);  // st4b {z0.b, z1.b, z2.b, z3.b}, p0, [sp]
+    __ dci(0xe46063e0);  // st4b {z0.b, z1.b, z2.b, z3.b}, p0, [sp, x0]
+    __ dci(0xe5f0e3e0);  // st4d {z0.d, z1.d, z2.d, z3.d}, p0, [sp]
+    __ dci(0xe5e063e0);  // st4d {z0.d, z1.d, z2.d, z3.d}, p0, [sp, x0, lsl #3]
+    __ dci(0xe4f0e3e0);  // st4h {z0.h, z1.h, z2.h, z3.h}, p0, [sp]
+    __ dci(0xe4e063e0);  // st4h {z0.h, z1.h, z2.h, z3.h}, p0, [sp, x0, lsl #1]
+    __ dci(0xe570e3e0);  // st4w {z0.s, z1.s, z2.s, z3.s}, p0, [sp]
+    __ dci(0xe56063e0);  // st4w {z0.s, z1.s, z2.s, z3.s}, p0, [sp, x0, lsl #2]
+    __ dci(0xe410e3e0);  // stnt1b {z0.b}, p0, [sp]
+    __ dci(0xe40063e0);  // stnt1b {z0.b}, p0, [sp, x0]
+    __ dci(0xe590e3e0);  // stnt1d {z0.d}, p0, [sp]
+    __ dci(0xe58063e0);  // stnt1d {z0.d}, p0, [sp, x0, lsl #3]
+    __ dci(0xe490e3e0);  // stnt1h {z0.h}, p0, [sp]
+    __ dci(0xe48063e0);  // stnt1h {z0.h}, p0, [sp, x0, lsl #1]
+    __ dci(0xe510e3e0);  // stnt1w {z0.s}, p0, [sp]
+    __ dci(0xe50063e0);  // stnt1w {z0.s}, p0, [sp, x0, lsl #2]
+    __ dci(0x858003e0);  // ldr p0, [sp]
+    __ dci(0xe58003e0);  // str p0, [sp]
+    __ dci(0xe58043e0);  // str z0, [sp]
+  }
+
+  END();
+
+  if (CAN_RUN()) {
+    RUN();
+
+    // No checks are made here. The test is designed to ensure that the base
+    // register is interpreted correctly as sp, not xzr. If it is interpreted
+    // as xzr, the memory access to addresses near zero will fault, and the
+    // test will fail.
+  }
+}
+
 // Manually constructed simulator test to avoid creating a VL128 variant.
 
 #ifdef VIXL_INCLUDE_SIMULATOR_AARCH64
-void Testsve_fmatmul(Test* config) {
+void Test_sve_fmatmul(Test* config) {
   SVE_SETUP_WITH_FEATURES(CPUFeatures::kSVE, CPUFeatures::kSVEF64MM);
 
   // Only double-precision matrix multiply is tested here. Single-precision is
@@ -19845,13 +20073,13 @@ void Testsve_fmatmul(Test* config) {
   }
 }
 Test* test_sve_fmatmul_list[] =
-    {Test::MakeSVETest(256, "AARCH64_ASM_sve_fmatmul_vl256", &Testsve_fmatmul),
-     Test::MakeSVETest(384, "AARCH64_ASM_sve_fmatmul_vl384", &Testsve_fmatmul),
+    {Test::MakeSVETest(256, "AARCH64_ASM_sve_fmatmul_vl256", &Test_sve_fmatmul),
+     Test::MakeSVETest(384, "AARCH64_ASM_sve_fmatmul_vl384", &Test_sve_fmatmul),
      Test::MakeSVETest(2048,
                        "AARCH64_ASM_sve_fmatmul_vl2048",
-                       &Testsve_fmatmul)};
+                       &Test_sve_fmatmul)};
 
-void Testsve_ld1ro(Test* config) {
+void Test_sve_ld1ro(Test* config) {
   SVE_SETUP_WITH_FEATURES(CPUFeatures::kSVE, CPUFeatures::kSVEF64MM);
   START();
 
@@ -19975,9 +20203,9 @@ void Testsve_ld1ro(Test* config) {
   }
 }
 Test* test_sve_ld1ro_list[] =
-    {Test::MakeSVETest(256, "AARCH64_ASM_sve_ld1ro_vl256", &Testsve_ld1ro),
-     Test::MakeSVETest(384, "AARCH64_ASM_sve_ld1ro_vl384", &Testsve_ld1ro),
-     Test::MakeSVETest(2048, "AARCH64_ASM_sve_ld1ro_vl2048", &Testsve_ld1ro)};
+    {Test::MakeSVETest(256, "AARCH64_ASM_sve_ld1ro_vl256", &Test_sve_ld1ro),
+     Test::MakeSVETest(384, "AARCH64_ASM_sve_ld1ro_vl384", &Test_sve_ld1ro),
+     Test::MakeSVETest(2048, "AARCH64_ASM_sve_ld1ro_vl2048", &Test_sve_ld1ro)};
 #endif
 
 }  // namespace aarch64

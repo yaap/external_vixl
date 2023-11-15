@@ -6901,6 +6901,176 @@ class Assembler : public vixl::internal::AssemblerBase {
              const ZRegister& zm,
              int index);
 
+  // Add with Tag.
+  void addg(const Register& xd, const Register& xn, int offset, int tag_offset);
+
+  // Tag Mask Insert.
+  void gmi(const Register& xd, const Register& xn, const Register& xm);
+
+  // Insert Random Tag.
+  void irg(const Register& xd, const Register& xn, const Register& xm = xzr);
+
+  // Load Allocation Tag.
+  void ldg(const Register& xt, const MemOperand& addr);
+
+  void StoreTagHelper(const Register& xt, const MemOperand& addr, Instr op);
+
+  // Store Allocation Tags.
+  void st2g(const Register& xt, const MemOperand& addr);
+
+  // Store Allocation Tag.
+  void stg(const Register& xt, const MemOperand& addr);
+
+  // Store Allocation Tag and Pair of registers.
+  void stgp(const Register& xt1, const Register& xt2, const MemOperand& addr);
+
+  // Store Allocation Tags, Zeroing.
+  void stz2g(const Register& xt, const MemOperand& addr);
+
+  // Store Allocation Tag, Zeroing.
+  void stzg(const Register& xt, const MemOperand& addr);
+
+  // Subtract with Tag.
+  void subg(const Register& xd, const Register& xn, int offset, int tag_offset);
+
+  // Subtract Pointer.
+  void subp(const Register& xd, const Register& xn, const Register& xm);
+
+  // Subtract Pointer, setting Flags.
+  void subps(const Register& xd, const Register& xn, const Register& xm);
+
+  // Compare with Tag.
+  void cmpp(const Register& xn, const Register& xm) { subps(xzr, xn, xm); }
+
+  // Memory Copy.
+  void cpye(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy, reads and writes non-temporal.
+  void cpyen(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy, reads non-temporal.
+  void cpyern(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy, writes non-temporal.
+  void cpyewn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only.
+  void cpyfe(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only, reads and writes non-temporal.
+  void cpyfen(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only, reads non-temporal.
+  void cpyfern(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only, writes non-temporal.
+  void cpyfewn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only.
+  void cpyfm(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only, reads and writes non-temporal.
+  void cpyfmn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only, reads non-temporal.
+  void cpyfmrn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only, writes non-temporal.
+  void cpyfmwn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only.
+  void cpyfp(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only, reads and writes non-temporal.
+  void cpyfpn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only, reads non-temporal.
+  void cpyfprn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy Forward-only, writes non-temporal.
+  void cpyfpwn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy.
+  void cpym(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy, reads and writes non-temporal.
+  void cpymn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy, reads non-temporal.
+  void cpymrn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy, writes non-temporal.
+  void cpymwn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy.
+  void cpyp(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy, reads and writes non-temporal.
+  void cpypn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy, reads non-temporal.
+  void cpyprn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Copy, writes non-temporal.
+  void cpypwn(const Register& rd, const Register& rs, const Register& rn);
+
+  // Memory Set.
+  void sete(const Register& rd, const Register& rn, const Register& rs);
+
+  // Memory Set, non-temporal.
+  void seten(const Register& rd, const Register& rn, const Register& rs);
+
+  // Memory Set with tag setting.
+  void setge(const Register& rd, const Register& rn, const Register& rs);
+
+  // Memory Set with tag setting, non-temporal.
+  void setgen(const Register& rd, const Register& rn, const Register& rs);
+
+  // Memory Set with tag setting.
+  void setgm(const Register& rd, const Register& rn, const Register& rs);
+
+  // Memory Set with tag setting, non-temporal.
+  void setgmn(const Register& rd, const Register& rn, const Register& rs);
+
+  // Memory Set with tag setting.
+  void setgp(const Register& rd, const Register& rn, const Register& rs);
+
+  // Memory Set with tag setting, non-temporal.
+  void setgpn(const Register& rd, const Register& rn, const Register& rs);
+
+  // Memory Set.
+  void setm(const Register& rd, const Register& rn, const Register& rs);
+
+  // Memory Set, non-temporal.
+  void setmn(const Register& rd, const Register& rn, const Register& rs);
+
+  // Memory Set.
+  void setp(const Register& rd, const Register& rn, const Register& rs);
+
+  // Memory Set, non-temporal.
+  void setpn(const Register& rd, const Register& rn, const Register& rs);
+
+  // Absolute value.
+  void abs(const Register& rd, const Register& rn);
+
+  // Count bits.
+  void cnt(const Register& rd, const Register& rn);
+
+  // Count Trailing Zeros.
+  void ctz(const Register& rd, const Register& rn);
+
+  // Signed Maximum.
+  void smax(const Register& rd, const Register& rn, const Operand& op);
+
+  // Signed Minimum.
+  void smin(const Register& rd, const Register& rn, const Operand& op);
+
+  // Unsigned Maximum.
+  void umax(const Register& rd, const Register& rn, const Operand& op);
+
+  // Unsigned Minimum.
+  void umin(const Register& rd, const Register& rn, const Operand& op);
+
   // Emit generic instructions.
 
   // Emit raw instructions into the instruction stream.
@@ -7219,8 +7389,9 @@ class Assembler : public vixl::internal::AssemblerBase {
   }
 
   static Instr ImmLSPair(int64_t imm7, unsigned access_size_in_bytes_log2) {
-    VIXL_ASSERT(IsMultiple(imm7, 1 << access_size_in_bytes_log2));
-    int64_t scaled_imm7 = imm7 / (1 << access_size_in_bytes_log2);
+    const auto access_size_in_bytes = 1U << access_size_in_bytes_log2;
+    VIXL_ASSERT(IsMultiple(imm7, access_size_in_bytes));
+    int64_t scaled_imm7 = imm7 / access_size_in_bytes;
     VIXL_ASSERT(IsInt7(scaled_imm7));
     return TruncateToUint7(scaled_imm7) << ImmLSPair_offset;
   }

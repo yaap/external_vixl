@@ -53,6 +53,14 @@
 #endif
 #endif
 
+// The hosts that Simulator running on may not have these flags defined.
+#ifndef PROT_BTI
+#define PROT_BTI 0x10
+#endif
+#ifndef PROT_MTE
+#define PROT_MTE 0x20
+#endif
+
 namespace vixl {
 namespace aarch64 {
 
@@ -153,45 +161,161 @@ class SimStack {
   static const size_t kDefaultUsableSize = 8 * 1024;
 };
 
+// Armv8.5 MTE helpers.
+inline int GetAllocationTagFromAddress(uint64_t address) {
+  return static_cast<int>(ExtractUnsignedBitfield64(59, 56, address));
+}
+
+template <typename T>
+T AddressUntag(T address) {
+  // Cast the address using a C-style cast. A reinterpret_cast would be
+  // appropriate, but it can't cast one integral type to another.
+  uint64_t bits = (uint64_t)address;
+  return (T)(bits & ~kAddressTagMask);
+}
+
+class MetaDataDepot {
+ public:
+  class MetaDataMTE {
+   public:
+    explicit MetaDataMTE(int tag) : tag_(tag) {}
+
+    int GetTag() const { return tag_; }
+    void SetTag(int tag) {
+      VIXL_ASSERT(IsUint4(tag));
+      tag_ = tag;
+    }
+
+    static bool IsActive() { return is_active; }
+    static void SetActive(bool value) { is_active = value; }
+
+   private:
+    static bool is_active;
+    int16_t tag_;
+
+    friend class MetaDataDepot;
+  };
+
+  // Generate a key for metadata recording from a untagged address.
+  template <typename T>
+  uint64_t GenerateMTEkey(T address) const {
+    // Cast the address using a C-style cast. A reinterpret_cast would be
+    // appropriate, but it can't cast one integral type to another.
+    return (uint64_t)(AddressUntag(address)) >> kMTETagGranuleInBytesLog2;
+  }
+
+  template <typename R, typename T>
+  R GetAttribute(T map, uint64_t key) {
+    auto pair = map->find(key);
+    R value = (pair == map->end()) ? nullptr : &pair->second;
+    return value;
+  }
+
+  template <typename T>
+  int GetMTETag(T address, Instruction const* pc = nullptr) {
+    uint64_t key = GenerateMTEkey(address);
+    MetaDataMTE* m = GetAttribute<MetaDataMTE*>(&metadata_mte_, key);
+
+    if (!m) {
+      std::stringstream sstream;
+      sstream << std::hex << "MTE ERROR : instruction at 0x"
+              << reinterpret_cast<uint64_t>(pc)
+              << " touched a unallocated memory location 0x"
+              << (uint64_t)(address) << ".\n";
+      VIXL_ABORT_WITH_MSG(sstream.str().c_str());
+    }
+
+    return m->GetTag();
+  }
+
+  template <typename T>
+  void SetMTETag(T address, int tag, Instruction const* pc = nullptr) {
+    VIXL_ASSERT(IsAligned((uintptr_t)address, kMTETagGranuleInBytes));
+    uint64_t key = GenerateMTEkey(address);
+    MetaDataMTE* m = GetAttribute<MetaDataMTE*>(&metadata_mte_, key);
+
+    if (!m) {
+      metadata_mte_.insert({key, MetaDataMTE(tag)});
+    } else {
+      // Overwrite
+      if (m->GetTag() == tag) {
+        std::stringstream sstream;
+        sstream << std::hex << "MTE WARNING : instruction at 0x"
+                << reinterpret_cast<uint64_t>(pc)
+                << ", the same tag is assigned to the address 0x"
+                << (uint64_t)(address) << ".\n";
+        VIXL_WARNING(sstream.str().c_str());
+      }
+      m->SetTag(tag);
+    }
+  }
+
+  template <typename T>
+  size_t CleanMTETag(T address) {
+    VIXL_ASSERT(
+        IsAligned(reinterpret_cast<uintptr_t>(address), kMTETagGranuleInBytes));
+    uint64_t key = GenerateMTEkey(address);
+    return metadata_mte_.erase(key);
+  }
+
+  size_t GetTotalCountMTE() { return metadata_mte_.size(); }
+
+ private:
+  // Tag recording of each allocated memory in the tag-granule.
+  std::unordered_map<uint64_t, class MetaDataMTE> metadata_mte_;
+};
+
+
 // Representation of memory, with typed getters and setters for access.
 class Memory {
  public:
-  explicit Memory(SimStack::Allocated stack) : stack_(std::move(stack)) {}
+  explicit Memory(SimStack::Allocated stack) : stack_(std::move(stack)) {
+    metadata_depot_ = nullptr;
+  }
 
   const SimStack::Allocated& GetStack() { return stack_; }
 
-  template <typename T>
-  T AddressUntag(T address) const {
-    // Cast the address using a C-style cast. A reinterpret_cast would be
-    // appropriate, but it can't cast one integral type to another.
-    uint64_t bits = (uint64_t)address;
-    return (T)(bits & ~kAddressTagMask);
+  template <typename A>
+  bool IsMTETagsMatched(A address, Instruction const* pc = nullptr) const {
+    if (MetaDataDepot::MetaDataMTE::IsActive()) {
+      // Cast the address using a C-style cast. A reinterpret_cast would be
+      // appropriate, but it can't cast one integral type to another.
+      uint64_t addr = (uint64_t)address;
+      int pointer_tag = GetAllocationTagFromAddress(addr);
+      int memory_tag = metadata_depot_->GetMTETag(AddressUntag(addr), pc);
+      return pointer_tag == memory_tag;
+    }
+    return true;
   }
 
   template <typename T, typename A>
-  T Read(A address) const {
+  T Read(A address, Instruction const* pc = nullptr) const {
     T value;
-    address = AddressUntag(address);
     VIXL_STATIC_ASSERT((sizeof(value) == 1) || (sizeof(value) == 2) ||
                        (sizeof(value) == 4) || (sizeof(value) == 8) ||
                        (sizeof(value) == 16));
-    auto base = reinterpret_cast<const char*>(address);
+    auto base = reinterpret_cast<const char*>(AddressUntag(address));
     if (stack_.IsAccessInGuardRegion(base, sizeof(value))) {
       VIXL_ABORT_WITH_MSG("Attempt to read from stack guard region");
+    }
+    if (!IsMTETagsMatched(address, pc)) {
+      VIXL_ABORT_WITH_MSG("Tag mismatch.");
     }
     memcpy(&value, base, sizeof(value));
     return value;
   }
 
   template <typename T, typename A>
-  void Write(A address, T value) const {
-    address = AddressUntag(address);
+  void Write(A address, T value, Instruction const* pc = nullptr) const {
     VIXL_STATIC_ASSERT((sizeof(value) == 1) || (sizeof(value) == 2) ||
                        (sizeof(value) == 4) || (sizeof(value) == 8) ||
                        (sizeof(value) == 16));
-    auto base = reinterpret_cast<char*>(address);
+    auto base = reinterpret_cast<char*>(AddressUntag(address));
     if (stack_.IsAccessInGuardRegion(base, sizeof(value))) {
       VIXL_ABORT_WITH_MSG("Attempt to write to stack guard region");
+    }
+    if (!IsMTETagsMatched(address, pc)) {
+      VIXL_ABORT_WITH_MSG("Tag mismatch.");
     }
     memcpy(base, &value, sizeof(value));
   }
@@ -243,8 +367,15 @@ class Memory {
     VIXL_UNREACHABLE();
   }
 
+  void AppendMetaData(MetaDataDepot* metadata_depot) {
+    VIXL_ASSERT(metadata_depot != nullptr);
+    VIXL_ASSERT(metadata_depot_ == nullptr);
+    metadata_depot_ = metadata_depot;
+  }
+
  private:
   SimStack::Allocated stack_;
+  MetaDataDepot* metadata_depot_;
 };
 
 // Represent a register (r0-r31, v0-v31, z0-z31, p0-p15).
@@ -1026,7 +1157,6 @@ class SimExclusiveGlobalMonitor {
   uint32_t seed_;
 };
 
-
 class Simulator : public DecoderVisitor {
  public:
   explicit Simulator(Decoder* decoder,
@@ -1109,7 +1239,7 @@ class Simulator : public DecoderVisitor {
   void WritePc(const Instruction* new_pc,
                BranchLogMode log_mode = LogBranches) {
     if (log_mode == LogBranches) LogTakenBranch(new_pc);
-    pc_ = memory_.AddressUntag(new_pc);
+    pc_ = AddressUntag(new_pc);
     pc_modified_ = true;
   }
   VIXL_DEPRECATED("WritePc", void set_pc(const Instruction* new_pc)) {
@@ -1135,6 +1265,8 @@ class Simulator : public DecoderVisitor {
 
   bool PcIsInGuardedPage() const { return guard_pages_; }
   void SetGuardedPages(bool guard_pages) { guard_pages_ = guard_pages; }
+
+  const Instruction* GetLastExecutedInstruction() const { return last_instr_; }
 
   void ExecuteInstruction() {
     // The program counter should always be aligned.
@@ -1248,6 +1380,26 @@ class Simulator : public DecoderVisitor {
   void SimulateNEONFPMulByElementLong(const Instruction* instr);
   void SimulateNEONComplexMulByElement(const Instruction* instr);
   void SimulateNEONDotProdByElement(const Instruction* instr);
+  void SimulateMTEAddSubTag(const Instruction* instr);
+  void SimulateMTETagMaskInsert(const Instruction* instr);
+  void SimulateMTESubPointer(const Instruction* instr);
+  void SimulateMTELoadTag(const Instruction* instr);
+  void SimulateMTEStoreTag(const Instruction* instr);
+  void SimulateMTEStoreTagPair(const Instruction* instr);
+  void Simulate_XdSP_XnSP_Xm(const Instruction* instr);
+  void SimulateCpy(const Instruction* instr);
+  void SimulateCpyFP(const Instruction* instr);
+  void SimulateCpyP(const Instruction* instr);
+  void SimulateCpyM(const Instruction* instr);
+  void SimulateCpyE(const Instruction* instr);
+  void SimulateSetP(const Instruction* instr);
+  void SimulateSetM(const Instruction* instr);
+  void SimulateSetE(const Instruction* instr);
+  void SimulateSetGP(const Instruction* instr);
+  void SimulateSetGM(const Instruction* instr);
+  void SimulateSignedMinMax(const Instruction* instr);
+  void SimulateUnsignedMinMax(const Instruction* instr);
+
 
   // Integer register accessors.
 
@@ -1779,12 +1931,14 @@ class Simulator : public DecoderVisitor {
 
   template <typename T, typename A>
   T MemRead(A address) const {
-    return memory_.Read<T>(address);
+    Instruction const* pc = ReadPc();
+    return memory_.Read<T>(address, pc);
   }
 
   template <typename T, typename A>
   void MemWrite(A address, T value) const {
-    return memory_.Write(address, value);
+    Instruction const* pc = ReadPc();
+    return memory_.Write(address, value, pc);
   }
 
   template <typename A>
@@ -2309,7 +2463,9 @@ class Simulator : public DecoderVisitor {
   void LogPWrite(int rt_code, uintptr_t address) {
     if (ShouldTraceWrites()) PrintPWrite(rt_code, address);
   }
-
+  void LogMemTransfer(uintptr_t dst, uintptr_t src, uint8_t value) {
+    if (ShouldTraceWrites()) PrintMemTransfer(dst, src, value);
+  }
   // Helpers for the above, where the access operation is parameterised.
   // - For loads, set op = "<-".
   // - For stores, set op = "->".
@@ -2321,6 +2477,7 @@ class Simulator : public DecoderVisitor {
                     PrintRegisterFormat format,
                     const char* op,
                     uintptr_t address);
+  void PrintMemTransfer(uintptr_t dst, uintptr_t src, uint8_t value);
   // Simple, unpredicated SVE accesses always access the whole vector, and never
   // know the lane type, so these don't accept a `format`.
   void PrintZAccess(int rt_code, const char* op, uintptr_t address);
@@ -2588,6 +2745,48 @@ class Simulator : public DecoderVisitor {
                    PointerType type);
   uint64_t AddPAC(uint64_t ptr, uint64_t context, PACKey key, PointerType type);
   uint64_t StripPAC(uint64_t ptr, PointerType type);
+  void PACHelper(int dst,
+                 int src,
+                 PACKey key,
+                 decltype(&Simulator::AddPAC) pac_fn);
+
+  // Armv8.5 MTE helpers.
+  uint64_t ChooseNonExcludedTag(uint64_t tag,
+                                uint64_t offset,
+                                uint64_t exclude = 0) {
+    VIXL_ASSERT(IsUint4(tag) && IsUint4(offset) && IsUint16(exclude));
+
+    if (exclude == 0xffff) {
+      return 0;
+    }
+
+    if (offset == 0) {
+      while ((exclude & (1 << tag)) != 0) {
+        tag = (tag + 1) % 16;
+      }
+    }
+
+    while (offset > 0) {
+      offset--;
+      tag = (tag + 1) % 16;
+      while ((exclude & (1 << tag)) != 0) {
+        tag = (tag + 1) % 16;
+      }
+    }
+    return tag;
+  }
+
+  uint64_t GetAddressWithAllocationTag(uint64_t addr, uint64_t tag) {
+    VIXL_ASSERT(IsUint4(tag));
+    return (addr & ~(UINT64_C(0xf) << 56)) | (tag << 56);
+  }
+
+  // Create or remove a mapping with memory protection. Memory attributes such
+  // as MTE and BTI are represented by metadata in Simulator.
+  void* Mmap(
+      void* address, size_t length, int prot, int flags, int fd, off_t offset);
+
+  int Munmap(void* address, size_t length, int prot);
 
   // The common CPUFeatures interface with the set of available features.
 
@@ -2786,6 +2985,47 @@ class Simulator : public DecoderVisitor {
 
   SimPRegister& GetPTrue() { return pregister_all_true_; }
 
+  template <typename T>
+  size_t CleanGranuleTag(T address, size_t length = kMTETagGranuleInBytes) {
+    size_t count = 0;
+    for (size_t offset = 0; offset < length; offset += kMTETagGranuleInBytes) {
+      count +=
+          meta_data_.CleanMTETag(reinterpret_cast<uintptr_t>(address) + offset);
+    }
+    size_t expected =
+        length / kMTETagGranuleInBytes + (length % kMTETagGranuleInBytes != 0);
+
+    // Give a warning when the memory region that is being unmapped isn't all
+    // either MTE protected or not.
+    if (count != expected) {
+      std::stringstream sstream;
+      sstream << std::hex << "MTE WARNING : the memory region being unmapped "
+                             "starting at address 0x"
+              << reinterpret_cast<uint64_t>(address)
+              << "is not fully MTE protected.\n";
+      VIXL_WARNING(sstream.str().c_str());
+    }
+    return count;
+  }
+
+  template <typename T>
+  void SetGranuleTag(T address,
+                     int tag,
+                     size_t length = kMTETagGranuleInBytes) {
+    for (size_t offset = 0; offset < length; offset += kMTETagGranuleInBytes) {
+      meta_data_.SetMTETag((uintptr_t)(address) + offset, tag);
+    }
+  }
+
+  template <typename T>
+  int GetGranuleTag(T address) {
+    return meta_data_.GetMTETag(address);
+  }
+
+  // Generate a random address tag, and any tags specified in the input are
+  // excluded from the selection.
+  uint64_t GenerateRandomTag(uint16_t exclude = 0);
+
  protected:
   const char* clr_normal;
   const char* clr_flag_name;
@@ -2897,13 +3137,45 @@ class Simulator : public DecoderVisitor {
                                       AddrMode addr_mode);
   void NEONLoadStoreSingleStructHelper(const Instruction* instr,
                                        AddrMode addr_mode);
+  template <uint32_t mops_type>
+  void MOPSPHelper(const Instruction* instr) {
+    VIXL_ASSERT(instr->IsConsistentMOPSTriplet<mops_type>());
 
-  uint64_t AddressUntag(uint64_t address) { return address & ~kAddressTagMask; }
+    int d = instr->GetRd();
+    int n = instr->GetRn();
+    int s = instr->GetRs();
 
-  template <typename T>
-  T* AddressUntag(T* address) {
-    uintptr_t address_raw = reinterpret_cast<uintptr_t>(address);
-    return reinterpret_cast<T*>(AddressUntag(address_raw));
+    // Aliased registers and xzr are disallowed for Xd and Xn.
+    if ((d == n) || (d == s) || (n == s) || (d == 31) || (n == 31)) {
+      VisitUnallocated(instr);
+    }
+
+    // Additionally, Xs may not be xzr for cpy.
+    if ((mops_type == "cpy"_h) && (s == 31)) {
+      VisitUnallocated(instr);
+    }
+
+    // Bits 31 and 30 must be zero.
+    if (instr->ExtractBits(31, 30) != 0) {
+      VisitUnallocated(instr);
+    }
+
+    // Saturate copy count.
+    uint64_t xn = ReadXRegister(n);
+    int saturation_bits = (mops_type == "cpy"_h) ? 55 : 63;
+    if ((xn >> saturation_bits) != 0) {
+      xn = (UINT64_C(1) << saturation_bits) - 1;
+      if (mops_type == "setg"_h) {
+        // Align saturated value to granule.
+        xn &= ~UINT64_C(kMTETagGranuleInBytes - 1);
+      }
+      WriteXRegister(n, xn);
+    }
+
+    ReadNzcv().SetN(0);
+    ReadNzcv().SetZ(0);
+    ReadNzcv().SetC(1);  // Indicates "option B" implementation.
+    ReadNzcv().SetV(0);
   }
 
   int64_t ShiftOperand(unsigned reg_size,
@@ -4737,7 +5009,7 @@ class Simulator : public DecoderVisitor {
   const Instruction* pc_;
 
   // Pointer to the last simulated instruction, used for checking the validity
-  // of the current instruction with movprfx.
+  // of the current instruction with the previous instruction, such as movprfx.
   Instruction const* last_instr_;
 
   // Branch type register, used for branch target identification.
@@ -4867,6 +5139,10 @@ class Simulator : public DecoderVisitor {
 
   // A configurable size of SVE vector registers.
   unsigned vector_length_;
+
+  // Representation of memory attribute such as MTE tagging and BTI page
+  // protection.
+  MetaDataDepot meta_data_;
 };
 
 #if defined(VIXL_HAS_SIMULATED_RUNTIME_CALL_SUPPORT) && __cplusplus < 201402L

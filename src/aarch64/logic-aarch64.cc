@@ -167,6 +167,21 @@ SimFloat16 Simulator::UFixedToFloat16(uint64_t src,
 }
 
 
+uint64_t Simulator::GenerateRandomTag(uint16_t exclude) {
+  uint64_t rtag = nrand48(rand_state_) >> 28;
+  VIXL_ASSERT(IsUint4(rtag));
+
+  if (exclude == 0) {
+    exclude = nrand48(rand_state_) >> 27;
+  }
+
+  // TODO: implement this to better match the specification, which calls for a
+  // true random mode, and a pseudo-random mode with state (EL1.TAG) modified by
+  // PRNG.
+  return ChooseNonExcludedTag(rtag, 0, exclude);
+}
+
+
 void Simulator::ld1(VectorFormat vform, LogicVRegister dst, uint64_t addr) {
   dst.ClearForWrite(vform);
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
@@ -2202,7 +2217,6 @@ LogicVRegister Simulator::extractnarrow(VectorFormat dstform,
     offset = LaneCountFromFormat(dstform) / 2;
   } else {
     offset = 0;
-    dst.ClearForWrite(dstform);
   }
 
   for (int i = 0; i < LaneCountFromFormat(srcform); i++) {
@@ -2241,6 +2255,10 @@ LogicVRegister Simulator::extractnarrow(VectorFormat dstform,
     } else {
       dst.SetUint(dstform, offset + i, result);
     }
+  }
+
+  if (!upperhalf) {
+    dst.ClearForWrite(dstform);
   }
   return dst;
 }
@@ -2284,7 +2302,7 @@ LogicVRegister Simulator::absdiff(VectorFormat vform,
     bool src1_gt_src2 = is_signed ? (src1.Int(vform, i) > src2.Int(vform, i))
                                   : (src1.Uint(vform, i) > src2.Uint(vform, i));
     // Always calculate the answer using unsigned arithmetic, to avoid
-    // implemenation-defined signed overflow.
+    // implementation-defined signed overflow.
     if (src1_gt_src2) {
       dst.SetUint(vform, i, src1.Uint(vform, i) - src2.Uint(vform, i));
     } else {
@@ -7501,7 +7519,7 @@ void Simulator::SVEGatherLoadScalarPlusVectorHelper(const Instruction* instr,
   // Note that these instructions don't use the Dtype encoding.
   int msize_in_bytes_log2 = instr->ExtractBits(24, 23);
   int scale = instr->ExtractBit(21) * msize_in_bytes_log2;
-  uint64_t base = ReadXRegister(instr->GetRn());
+  uint64_t base = ReadXRegister(instr->GetRn(), Reg31IsStackPointer);
   LogicSVEAddressVector addr(base,
                              &ReadVRegister(instr->GetRm()),
                              vform,
@@ -7810,7 +7828,7 @@ LogicVRegister Simulator::fmatmul(VectorFormat vform,
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
     // Elements outside a multiple of 4T are set to zero. This happens only
     // for double precision operations, when the VL is a multiple of 128 bits,
-    // but not a mutiple of 256 bits.
+    // but not a multiple of 256 bits.
     T value = (i < (T_per_segment * segment_count)) ? result[i] : 0;
     srcdst.SetFloat<T>(vform, i, value);
   }

@@ -1464,8 +1464,6 @@
       {"crc32h_32c_dp_2src"_h, &VISITORCLASS::VisitDataProcessing2Source},     \
       {"crc32w_32c_dp_2src"_h, &VISITORCLASS::VisitDataProcessing2Source},     \
       {"crc32x_64c_dp_2src"_h, &VISITORCLASS::VisitDataProcessing2Source},     \
-      {"gmi_64g_dp_2src"_h, &VISITORCLASS::VisitDataProcessing2Source},        \
-      {"irg_64i_dp_2src"_h, &VISITORCLASS::VisitDataProcessing2Source},        \
       {"lslv_32_dp_2src"_h, &VISITORCLASS::VisitDataProcessing2Source},        \
       {"lslv_64_dp_2src"_h, &VISITORCLASS::VisitDataProcessing2Source},        \
       {"lsrv_32_dp_2src"_h, &VISITORCLASS::VisitDataProcessing2Source},        \
@@ -2595,7 +2593,6 @@
       {"dsb_bo_barriers"_h, &VISITORCLASS::VisitSystem},                       \
       {"hint_hm_hints"_h, &VISITORCLASS::VisitSystem},                         \
       {"mrs_rs_systemmove"_h, &VISITORCLASS::VisitSystem},                     \
-      {"msr_si_pstate"_h, &VISITORCLASS::VisitSystem},                         \
       {"msr_sr_systemmove"_h, &VISITORCLASS::VisitSystem},                     \
       {"psb_hc_hints"_h, &VISITORCLASS::VisitSystem},                          \
       {"sb_only_barriers"_h, &VISITORCLASS::VisitSystem},                      \
@@ -2641,19 +2638,17 @@
        &VISITORCLASS::VisitUnconditionalBranchToRegister},                     \
       {"ret_64r_branch_reg"_h,                                                 \
        &VISITORCLASS::VisitUnconditionalBranchToRegister},                     \
-      {"addg_64_addsub_immtags"_h, &VISITORCLASS::VisitUnimplemented},         \
       {"bcax_vvv16_crypto4"_h, &VISITORCLASS::VisitUnimplemented},             \
       {"bfcvtn_asimdmisc_4s"_h, &VISITORCLASS::VisitUnimplemented},            \
       {"bfdot_asimdelem_e"_h, &VISITORCLASS::VisitUnimplemented},              \
       {"bfdot_asimdsame2_d"_h, &VISITORCLASS::VisitUnimplemented},             \
       {"bfmlal_asimdelem_f"_h, &VISITORCLASS::VisitUnimplemented},             \
-      {"bfmlal_asimdsame2_f_"_h, &VISITORCLASS::VisitUnimplemented},           \
+      {"bfmlal_asimdsame2_f"_h, &VISITORCLASS::VisitUnimplemented},            \
       {"bfmmla_asimdsame2_e"_h, &VISITORCLASS::VisitUnimplemented},            \
       {"dsb_bon_barriers"_h, &VISITORCLASS::VisitUnimplemented},               \
       {"eor3_vvv16_crypto4"_h, &VISITORCLASS::VisitUnimplemented},             \
       {"ld64b_64l_memop"_h, &VISITORCLASS::VisitUnimplemented},                \
       {"ldgm_64bulk_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},           \
-      {"ldg_64loffset_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},         \
       {"ldtrb_32_ldst_unpriv"_h, &VISITORCLASS::VisitUnimplemented},           \
       {"ldtrh_32_ldst_unpriv"_h, &VISITORCLASS::VisitUnimplemented},           \
       {"ldtrsb_32_ldst_unpriv"_h, &VISITORCLASS::VisitUnimplemented},          \
@@ -2677,33 +2672,15 @@
       {"sm3tt2b_vvv_crypto3_imm2"_h, &VISITORCLASS::VisitUnimplemented},       \
       {"sm4ekey_vvv4_cryptosha512_3"_h, &VISITORCLASS::VisitUnimplemented},    \
       {"sm4e_vv4_cryptosha512_2"_h, &VISITORCLASS::VisitUnimplemented},        \
-      {"st2g_64soffset_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},        \
-      {"st2g_64spost_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},          \
-      {"st2g_64spre_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},           \
       {"st64b_64l_memop"_h, &VISITORCLASS::VisitUnimplemented},                \
       {"st64bv_64_memop"_h, &VISITORCLASS::VisitUnimplemented},                \
       {"st64bv0_64_memop"_h, &VISITORCLASS::VisitUnimplemented},               \
       {"stgm_64bulk_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},           \
-      {"stgp_64_ldstpair_off"_h, &VISITORCLASS::VisitUnimplemented},           \
-      {"stgp_64_ldstpair_post"_h, &VISITORCLASS::VisitUnimplemented},          \
-      {"stgp_64_ldstpair_pre"_h, &VISITORCLASS::VisitUnimplemented},           \
-      {"stg_64soffset_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},         \
-      {"stg_64spost_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},           \
-      {"stg_64spre_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},            \
       {"sttrb_32_ldst_unpriv"_h, &VISITORCLASS::VisitUnimplemented},           \
       {"sttrh_32_ldst_unpriv"_h, &VISITORCLASS::VisitUnimplemented},           \
       {"sttr_32_ldst_unpriv"_h, &VISITORCLASS::VisitUnimplemented},            \
       {"sttr_64_ldst_unpriv"_h, &VISITORCLASS::VisitUnimplemented},            \
-      {"stz2g_64soffset_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},       \
-      {"stz2g_64spost_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},         \
-      {"stz2g_64spre_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},          \
       {"stzgm_64bulk_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},          \
-      {"stzg_64soffset_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},        \
-      {"stzg_64spost_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},          \
-      {"stzg_64spre_ldsttags"_h, &VISITORCLASS::VisitUnimplemented},           \
-      {"subg_64_addsub_immtags"_h, &VISITORCLASS::VisitUnimplemented},         \
-      {"subps_64s_dp_2src"_h, &VISITORCLASS::VisitUnimplemented},              \
-      {"subp_64s_dp_2src"_h, &VISITORCLASS::VisitUnimplemented},               \
       {"tcancel_ex_exception"_h, &VISITORCLASS::VisitUnimplemented},           \
       {"tstart_br_systemresult"_h, &VISITORCLASS::VisitUnimplemented},         \
       {"ttest_br_systemresult"_h, &VISITORCLASS::VisitUnimplemented},          \
@@ -2712,13 +2689,13 @@
       {"xar_vvv2_crypto3_imm6"_h, &VISITORCLASS::VisitUnimplemented},          \
       {"bfcvt_z_p_z_s2bf"_h, &VISITORCLASS::VisitUnimplemented},               \
       {"bfcvtnt_z_p_z_s2bf"_h, &VISITORCLASS::VisitUnimplemented},             \
-      {"bfdot_z_zzz_"_h, &VISITORCLASS::VisitUnimplemented},                   \
-      {"bfdot_z_zzzi_"_h, &VISITORCLASS::VisitUnimplemented},                  \
-      {"bfmlalb_z_zzz_"_h, &VISITORCLASS::VisitUnimplemented},                 \
-      {"bfmlalb_z_zzzi_"_h, &VISITORCLASS::VisitUnimplemented},                \
-      {"bfmlalt_z_zzz_"_h, &VISITORCLASS::VisitUnimplemented},                 \
-      {"bfmlalt_z_zzzi_"_h, &VISITORCLASS::VisitUnimplemented},                \
-      {"bfmmla_z_zzz_"_h, &VISITORCLASS::VisitUnimplemented}, {                \
+      {"bfdot_z_zzz"_h, &VISITORCLASS::VisitUnimplemented},                    \
+      {"bfdot_z_zzzi"_h, &VISITORCLASS::VisitUnimplemented},                   \
+      {"bfmlalb_z_zzz"_h, &VISITORCLASS::VisitUnimplemented},                  \
+      {"bfmlalb_z_zzzi"_h, &VISITORCLASS::VisitUnimplemented},                 \
+      {"bfmlalt_z_zzz"_h, &VISITORCLASS::VisitUnimplemented},                  \
+      {"bfmlalt_z_zzzi"_h, &VISITORCLASS::VisitUnimplemented},                 \
+      {"bfmmla_z_zzz"_h, &VISITORCLASS::VisitUnimplemented}, {                 \
     "unallocated"_h, &VISITORCLASS::VisitUnallocated                           \
   }
 
@@ -2742,7 +2719,6 @@
       {"pacib1716_hi_hints"_h, &VISITORCLASS::VisitSystem},                    \
       {"pacibsp_hi_hints"_h, &VISITORCLASS::VisitSystem},                      \
       {"pacibz_hi_hints"_h, &VISITORCLASS::VisitSystem},                       \
-      {"pssbb_only_barriers"_h, &VISITORCLASS::VisitSystem},                   \
       {"sev_hi_hints"_h, &VISITORCLASS::VisitSystem},                          \
       {"sevl_hi_hints"_h, &VISITORCLASS::VisitSystem},                         \
       {"ssbb_only_barriers"_h, &VISITORCLASS::VisitSystem},                    \
