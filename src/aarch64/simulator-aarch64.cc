@@ -620,6 +620,8 @@ void Simulator::ResetState() {
   // BTI state.
   btype_ = DefaultBType;
   next_btype_ = DefaultBType;
+
+  meta_data_.ResetState();
 }
 
 void Simulator::SetVectorLengthInBits(unsigned vector_length) {
@@ -3726,6 +3728,7 @@ BType Simulator::GetBTypeFromInstruction(const Instruction* instr) const {
 void Simulator::VisitUnconditionalBranchToRegister(const Instruction* instr) {
   bool authenticate = false;
   bool link = false;
+  bool ret = false;
   uint64_t addr = ReadXRegister(instr->GetRn());
   uint64_t context = 0;
 
@@ -3734,7 +3737,6 @@ void Simulator::VisitUnconditionalBranchToRegister(const Instruction* instr) {
       link = true;
       VIXL_FALLTHROUGH();
     case BR:
-    case RET:
       break;
 
     case BLRAAZ:
@@ -3761,6 +3763,9 @@ void Simulator::VisitUnconditionalBranchToRegister(const Instruction* instr) {
       authenticate = true;
       addr = ReadXRegister(kLinkRegCode);
       context = ReadXRegister(31, Reg31IsStackPointer);
+      VIXL_FALLTHROUGH();
+    case RET:
+      ret = true;
       break;
     default:
       VIXL_UNREACHABLE();
@@ -3777,6 +3782,22 @@ void Simulator::VisitUnconditionalBranchToRegister(const Instruction* instr) {
     int error_lsb = GetTopPACBit(addr, kInstructionPointer) - 2;
     if (((addr >> error_lsb) & 0x3) != 0x0) {
       VIXL_ABORT_WITH_MSG("Failed to authenticate pointer.");
+    }
+  }
+
+  if (!ret) {
+    // Check for interceptions to the target address, if one is found, call it.
+    MetaDataDepot::BranchInterceptionAbstract* interception =
+        meta_data_.FindBranchInterception(addr);
+
+    if (interception != nullptr) {
+      // Instead of writing the address of the function to the PC, call the
+      // function's interception directly. We change the address that will be
+      // branched to so that afterwards we continue execution from
+      // the address in the LR. Note: the interception may modify the LR so
+      // store it before calling the interception.
+      addr = ReadRegister<uint64_t>(kLinkRegCode);
+      (*interception)(this);
     }
   }
 
@@ -8308,7 +8329,10 @@ void Simulator::NEONLoadStoreMultiStructHelper(const Instruction* instr,
     // The immediate is implied by the number of vector registers used.
     addr_base += (rm == 31) ? (RegisterSizeInBytesFromFormat(vf) * reg_count)
                             : ReadXRegister(rm);
-    WriteXRegister(instr->GetRn(), addr_base);
+    WriteXRegister(instr->GetRn(),
+                   addr_base,
+                   LogRegWrites,
+                   Reg31IsStackPointer);
   } else {
     VIXL_ASSERT(addr_mode == Offset);
   }
@@ -8545,7 +8569,9 @@ void Simulator::NEONLoadStoreSingleStructHelper(const Instruction* instr,
     int lane_size = LaneSizeInBytesFromFormat(vf);
     WriteXRegister(instr->GetRn(),
                    addr + ((rm == 31) ? (reg_count * lane_size)
-                                      : ReadXRegister(rm)));
+                                      : ReadXRegister(rm)),
+                   LogRegWrites,
+                   Reg31IsStackPointer);
   }
 }
 
