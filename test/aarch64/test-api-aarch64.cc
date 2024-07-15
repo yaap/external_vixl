@@ -27,14 +27,15 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <thread>
 
 #include "test-runner.h"
 #include "test-utils.h"
-#include "aarch64/test-utils-aarch64.h"
 
 #include "aarch64/macro-assembler-aarch64.h"
 #include "aarch64/registers-aarch64.h"
 #include "aarch64/simulator-aarch64.h"
+#include "aarch64/test-utils-aarch64.h"
 
 #define __ masm.
 #define TEST(name) TEST_(AARCH64_API_##name)
@@ -1762,6 +1763,24 @@ TEST(sim_stack) {
   VIXL_CHECK(s.IsAccessInGuardRegion(s.GetBase() - 42, 4096));
   VIXL_CHECK(s.IsAccessInGuardRegion(s.GetLimit() - 1280, 2048));
   VIXL_CHECK(s.IsAccessInGuardRegion(s.GetLimit() - 1280, 10000));
+}
+
+void AllocateAndFreeGCS() {
+  Decoder d;
+  Simulator s(&d);
+
+  for (int i = 0; i < 100000; i++) {
+    uint64_t gcs = s.GetGCSManager().AllocateStack();
+    s.GetGCSManager().FreeStack(gcs);
+  }
+}
+
+TEST(sim_gcs_manager) {
+  std::thread t1(AllocateAndFreeGCS);
+  std::thread t2(AllocateAndFreeGCS);
+
+  t1.join();
+  t2.join();
 }
 #endif
 

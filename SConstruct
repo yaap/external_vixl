@@ -98,7 +98,9 @@ options = {
       'CCFLAGS' : ['-O3'],
       },
     'simulator:aarch64' : {
-      'CCFLAGS' : ['-DVIXL_INCLUDE_SIMULATOR_AARCH64'],
+      'CCFLAGS' : ['-DVIXL_INCLUDE_SIMULATOR_AARCH64',
+                   '-pthread'],
+      'LINKFLAGS' : ['-pthread']
       },
     'symbols:on' : {
       'CCFLAGS' : ['-g'],
@@ -120,6 +122,9 @@ options = {
     'coverage:on' : {
       'CCFLAGS': ['-fprofile-instr-generate', '-fcoverage-mapping'],
       'LINKFLAGS': ['-fprofile-instr-generate', '-fcoverage-mapping']
+      },
+    'implicit_checks:on' : {
+      'CCFLAGS' : ['-DVIXL_ENABLE_IMPLICIT_CHECKS'],
       }
     }
 
@@ -264,6 +269,10 @@ vars.AddVariables(
                  'off', allowed_values=['on', 'off']),
     EnumVariable('negative_testing',
                   'Enable negative testing (needs exceptions)',
+                 'off', allowed_values=['on', 'off']),
+    EnumVariable('implicit_checks',
+                 'Allow signals raised from simulated invalid (e.g: out of'
+                 + ' bounds) memory reads to be handled by the host.',
                  'off', allowed_values=['on', 'off']),
     DefaultVariable('symbols', 'Include debugging symbols in the binaries',
                     ['on', 'off']),

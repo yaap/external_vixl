@@ -239,6 +239,11 @@ inline uint64_t RotateRight(uint64_t value,
   return value & width_mask;
 }
 
+inline uint64_t RotateLeft(uint64_t value,
+                           unsigned int rotate,
+                           unsigned int width) {
+  return RotateRight(value, width - rotate, width);
+}
 
 // Wrapper class for passing FP16 values through the assembler.
 // This is purely to aid with type checking/casting.
@@ -289,6 +294,12 @@ template <typename T>
 T UnsignedNegate(T value) {
   VIXL_STATIC_ASSERT(std::is_unsigned<T>::value);
   return ~value + 1;
+}
+
+template <typename T>
+bool CanBeNegated(T value) {
+  VIXL_STATIC_ASSERT(std::is_signed<T>::value);
+  return (value == std::numeric_limits<T>::min()) ? false : true;
 }
 
 // An absolute operation for signed integers that is defined for results outside

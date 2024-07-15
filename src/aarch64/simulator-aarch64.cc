@@ -26,16 +26,14 @@
 
 #ifdef VIXL_INCLUDE_SIMULATOR_AARCH64
 
-#include <sys/mman.h>
-
-#include <errno.h>
-#include <unistd.h>
+#include "simulator-aarch64.h"
 
 #include <cmath>
 #include <cstring>
+#include <errno.h>
 #include <limits>
-
-#include "simulator-aarch64.h"
+#include <sys/mman.h>
+#include <unistd.h>
 
 namespace vixl {
 namespace aarch64 {
@@ -43,6 +41,25 @@ namespace aarch64 {
 using vixl::internal::SimFloat16;
 
 const Instruction* Simulator::kEndOfSimAddress = NULL;
+
+MemoryAccessResult TryMemoryAccess(uintptr_t address, uintptr_t access_size) {
+#ifdef VIXL_ENABLE_IMPLICIT_CHECKS
+  for (uintptr_t i = 0; i < access_size; i++) {
+    if (_vixl_internal_ReadMemory(address, i) == MemoryAccessResult::Failure) {
+      // The memory access failed.
+      return MemoryAccessResult::Failure;
+    }
+  }
+
+  // Either the memory access did not raise a signal or the signal handler did
+  // not correctly return MemoryAccessResult::Failure.
+  return MemoryAccessResult::Success;
+#else
+  USE(address);
+  USE(access_size);
+  return MemoryAccessResult::Success;
+#endif  // VIXL_ENABLE_IMPLICIT_CHECKS
+}
 
 bool MetaDataDepot::MetaDataMTE::is_active = false;
 
@@ -490,14 +507,50 @@ const Simulator::FormToVisitorFnMap* Simulator::GetFormToVisitorFnMap() {
       {"umax_64u_minmax_imm"_h, &Simulator::SimulateUnsignedMinMax},
       {"umin_32u_minmax_imm"_h, &Simulator::SimulateUnsignedMinMax},
       {"umin_64u_minmax_imm"_h, &Simulator::SimulateUnsignedMinMax},
+      {"bcax_vvv16_crypto4"_h, &Simulator::SimulateNEONSHA3},
+      {"eor3_vvv16_crypto4"_h, &Simulator::SimulateNEONSHA3},
+      {"rax1_vvv2_cryptosha512_3"_h, &Simulator::SimulateNEONSHA3},
+      {"xar_vvv2_crypto3_imm6"_h, &Simulator::SimulateNEONSHA3},
+      {"sha512h_qqv_cryptosha512_3"_h, &Simulator::SimulateSHA512},
+      {"sha512h2_qqv_cryptosha512_3"_h, &Simulator::SimulateSHA512},
+      {"sha512su0_vv2_cryptosha512_2"_h, &Simulator::SimulateSHA512},
+      {"sha512su1_vvv2_cryptosha512_3"_h, &Simulator::SimulateSHA512},
   };
   return &form_to_visitor;
 }
 
+// Try to access the piece of memory given by the address passed in RDI and the
+// offset passed in RSI, using testb. If a signal is raised then the signal
+// handler should set RIP to _vixl_internal_AccessMemory_continue and RAX to
+// MemoryAccessResult::Failure. If no signal is raised then zero RAX before
+// returning.
+#ifdef VIXL_ENABLE_IMPLICIT_CHECKS
+#ifdef __x86_64__
+asm(R"(
+  .globl _vixl_internal_ReadMemory
+  _vixl_internal_ReadMemory:
+    testb (%rdi, %rsi), %al
+    xorq %rax, %rax
+    ret
+  .globl _vixl_internal_AccessMemory_continue
+  _vixl_internal_AccessMemory_continue:
+    ret
+)");
+#else
+asm(R"(
+  .globl _vixl_internal_ReadMemory
+  _vixl_internal_ReadMemory:
+    ret
+)");
+#endif  // __x86_64__
+#endif  // VIXL_ENABLE_IMPLICIT_CHECKS
+
 Simulator::Simulator(Decoder* decoder, FILE* stream, SimStack::Allocated stack)
     : memory_(std::move(stack)),
       last_instr_(NULL),
-      cpu_features_auditor_(decoder, CPUFeatures::All()) {
+      cpu_features_auditor_(decoder, CPUFeatures::All()),
+      gcs_(kGCSNoStack),
+      gcs_enabled_(false) {
   // Ensure that shift operations act as the simulator expects.
   VIXL_ASSERT((static_cast<int32_t>(-1) >> 1) == -1);
   VIXL_ASSERT((static_cast<uint32_t>(-1) >> 1) == 0x7fffffff);
@@ -617,6 +670,8 @@ void Simulator::ResetState() {
   ResetPRegisters();
 
   WriteSp(memory_.GetStack().GetBase());
+  ResetGCSState();
+  EnableGCSCheck();
 
   pc_ = NULL;
   pc_modified_ = false;
@@ -654,6 +709,9 @@ Simulator::~Simulator() {
   delete print_disasm_;
   close(placeholder_pipe_fd_[0]);
   close(placeholder_pipe_fd_[1]);
+  if (IsAllocatedGCS(gcs_)) {
+    GetGCSManager().FreeStack(gcs_);
+  }
 }
 
 
@@ -954,6 +1012,19 @@ vixl_uint128_t Simulator::Add128(vixl_uint128_t x, vixl_uint128_t y) {
   return std::make_pair(sum_hi.first, sum_lo.first);
 }
 
+vixl_uint128_t Simulator::Lsl128(vixl_uint128_t x, unsigned shift) const {
+  VIXL_ASSERT(shift <= 64);
+  if (shift == 0) return x;
+  if (shift == 64) return std::make_pair(x.second, 0);
+  uint64_t lo = x.second << shift;
+  uint64_t hi = (x.first << shift) | (x.second >> (64 - shift));
+  return std::make_pair(hi, lo);
+}
+
+vixl_uint128_t Simulator::Eor128(vixl_uint128_t x, vixl_uint128_t y) const {
+  return std::make_pair(x.first ^ y.first, x.second ^ y.second);
+}
+
 vixl_uint128_t Simulator::Neg128(vixl_uint128_t x) {
   // Negate the integer value. Throw an assertion when the input is INT128_MIN.
   VIXL_ASSERT((x.first != GetSignMask(64)) || (x.second != 0));
@@ -990,6 +1061,20 @@ vixl_uint128_t Simulator::Mul64(uint64_t x, uint64_t y) {
   result = Add128(result, d);
   return neg_result ? std::make_pair(-result.first - 1, -result.second)
                     : result;
+}
+
+vixl_uint128_t Simulator::PolynomialMult128(uint64_t op1,
+                                            uint64_t op2,
+                                            int lane_size_in_bits) const {
+  VIXL_ASSERT(static_cast<unsigned>(lane_size_in_bits) <= kDRegSize);
+  vixl_uint128_t result = std::make_pair(0, 0);
+  vixl_uint128_t op2q = std::make_pair(0, op2);
+  for (int i = 0; i < lane_size_in_bits; i++) {
+    if ((op1 >> i) & 1) {
+      result = Eor128(result, Lsl128(op2q, i));
+    }
+  }
+  return result;
 }
 
 int64_t Simulator::ShiftOperand(unsigned reg_size,
@@ -1727,6 +1812,18 @@ void Simulator::PrintSystemRegister(SystemRegister id) {
   }
 }
 
+void Simulator::PrintGCS(bool is_push, uint64_t addr, size_t entry) {
+  const char* arrow = is_push ? "<-" : "->";
+  fprintf(stream_,
+          "# %sgcs0x%04" PRIx64 "[%" PRIu64 "]: %s %s 0x%016" PRIxPTR "\n",
+          clr_flag_name,
+          gcs_,
+          entry,
+          clr_normal,
+          arrow,
+          addr);
+}
+
 uint16_t Simulator::PrintPartialAccess(uint16_t access_mask,
                                        uint16_t future_access_mask,
                                        int struct_element_count,
@@ -1774,8 +1871,9 @@ uint16_t Simulator::PrintPartialAccess(uint16_t access_mask,
   const char* sep = "";
   for (int i = struct_element_count - 1; i >= 0; i--) {
     int offset = lane_size_in_bytes * i;
-    uint64_t nibble = MemReadUint(lane_size_in_bytes, address + offset);
-    fprintf(stream_, "%s%0*" PRIx64, sep, lane_size_in_nibbles, nibble);
+    auto nibble = MemReadUint(lane_size_in_bytes, address + offset);
+    VIXL_ASSERT(nibble);
+    fprintf(stream_, "%s%0*" PRIx64, sep, lane_size_in_nibbles, *nibble);
     sep = "'";
   }
   fprintf(stream_,
@@ -3703,6 +3801,7 @@ void Simulator::VisitUnconditionalBranch(const Instruction* instr) {
   switch (instr->Mask(UnconditionalBranchMask)) {
     case BL:
       WriteLr(instr->GetNextInstruction());
+      GCSPush(reinterpret_cast<uint64_t>(instr->GetNextInstruction()));
       VIXL_FALLTHROUGH();
     case B:
       WritePc(instr->GetImmPCOffsetTarget());
@@ -3746,6 +3845,7 @@ void Simulator::VisitUnconditionalBranchToRegister(const Instruction* instr) {
   bool authenticate = false;
   bool link = false;
   bool ret = false;
+  bool compare_gcs = false;
   uint64_t addr = ReadXRegister(instr->GetRn());
   uint64_t context = 0;
 
@@ -3782,14 +3882,11 @@ void Simulator::VisitUnconditionalBranchToRegister(const Instruction* instr) {
       context = ReadXRegister(31, Reg31IsStackPointer);
       VIXL_FALLTHROUGH();
     case RET:
+      compare_gcs = true;
       ret = true;
       break;
     default:
       VIXL_UNREACHABLE();
-  }
-
-  if (link) {
-    WriteLr(instr->GetNextInstruction());
   }
 
   if (authenticate) {
@@ -3800,6 +3897,33 @@ void Simulator::VisitUnconditionalBranchToRegister(const Instruction* instr) {
     if (((addr >> error_lsb) & 0x3) != 0x0) {
       VIXL_ABORT_WITH_MSG("Failed to authenticate pointer.");
     }
+  }
+
+  if (compare_gcs) {
+    uint64_t expected_lr = GCSPeek();
+    char msg[128];
+    if (expected_lr != 0) {
+      if ((expected_lr & 0x3) != 0) {
+        snprintf(msg,
+                 sizeof(msg),
+                 "GCS contains misaligned return address: 0x%016lx\n",
+                 expected_lr);
+        ReportGCSFailure(msg);
+      } else if ((addr != 0) && (addr != expected_lr)) {
+        snprintf(msg,
+                 sizeof(msg),
+                 "GCS mismatch: lr = 0x%016lx, gcs = 0x%016lx\n",
+                 addr,
+                 expected_lr);
+        ReportGCSFailure(msg);
+      }
+      GCSPop();
+    }
+  }
+
+  if (link) {
+    WriteLr(instr->GetNextInstruction());
+    GCSPush(reinterpret_cast<uint64_t>(instr->GetNextInstruction()));
   }
 
   if (!ret) {
@@ -4123,7 +4247,9 @@ void Simulator::LoadAcquireRCpcUnscaledOffsetHelper(const Instruction* instr) {
     VIXL_ALIGNMENT_EXCEPTION();
   }
 
-  WriteRegister<T1>(rt, static_cast<T1>(MemRead<T2>(address)));
+  VIXL_DEFINE_OR_RETURN(value, MemRead<T2>(address));
+
+  WriteRegister<T1>(rt, static_cast<T1>(value));
 
   // Approximate load-acquire by issuing a full barrier after the load.
   __sync_synchronize();
@@ -4153,7 +4279,7 @@ void Simulator::StoreReleaseUnscaledOffsetHelper(const Instruction* instr) {
   // Approximate store-release by issuing a full barrier after the load.
   __sync_synchronize();
 
-  MemWrite<T>(address, ReadRegister<T>(rt));
+  if (!MemWrite<T>(address, ReadRegister<T>(rt))) return;
 
   LogWrite(rt, GetPrintRegisterFormat(element_size), address);
 }
@@ -4240,7 +4366,9 @@ void Simulator::VisitLoadStorePAC(const Instruction* instr) {
   // Verify that the calculated address is available to the host.
   VIXL_ASSERT(address == addr_ptr);
 
-  WriteXRegister(dst, MemRead<uint64_t>(addr_ptr), NoRegLog);
+  VIXL_DEFINE_OR_RETURN(value, MemRead<uint64_t>(addr_ptr));
+
+  WriteXRegister(dst, value, NoRegLog);
   unsigned access_size = 1 << 3;
   LogRead(dst, GetPrintRegisterFormatForSize(access_size), addr_ptr);
 }
@@ -4267,93 +4395,121 @@ void Simulator::LoadStoreHelper(const Instruction* instr,
   int extend_to_size = 0;
   LoadStoreOp op = static_cast<LoadStoreOp>(instr->Mask(LoadStoreMask));
   switch (op) {
-    case LDRB_w:
-      WriteWRegister(srcdst, MemRead<uint8_t>(address), NoRegLog);
+    case LDRB_w: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<uint8_t>(address));
+      WriteWRegister(srcdst, value, NoRegLog);
       extend_to_size = kWRegSizeInBytes;
       break;
-    case LDRH_w:
-      WriteWRegister(srcdst, MemRead<uint16_t>(address), NoRegLog);
+    }
+    case LDRH_w: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<uint16_t>(address));
+      WriteWRegister(srcdst, value, NoRegLog);
       extend_to_size = kWRegSizeInBytes;
       break;
-    case LDR_w:
-      WriteWRegister(srcdst, MemRead<uint32_t>(address), NoRegLog);
+    }
+    case LDR_w: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<uint32_t>(address));
+      WriteWRegister(srcdst, value, NoRegLog);
       extend_to_size = kWRegSizeInBytes;
       break;
-    case LDR_x:
-      WriteXRegister(srcdst, MemRead<uint64_t>(address), NoRegLog);
+    }
+    case LDR_x: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<uint64_t>(address));
+      WriteXRegister(srcdst, value, NoRegLog);
       extend_to_size = kXRegSizeInBytes;
       break;
-    case LDRSB_w:
-      WriteWRegister(srcdst, MemRead<int8_t>(address), NoRegLog);
+    }
+    case LDRSB_w: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<int8_t>(address));
+      WriteWRegister(srcdst, value, NoRegLog);
       extend_to_size = kWRegSizeInBytes;
       break;
-    case LDRSH_w:
-      WriteWRegister(srcdst, MemRead<int16_t>(address), NoRegLog);
+    }
+    case LDRSH_w: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<int16_t>(address));
+      WriteWRegister(srcdst, value, NoRegLog);
       extend_to_size = kWRegSizeInBytes;
       break;
-    case LDRSB_x:
-      WriteXRegister(srcdst, MemRead<int8_t>(address), NoRegLog);
+    }
+    case LDRSB_x: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<int8_t>(address));
+      WriteXRegister(srcdst, value, NoRegLog);
       extend_to_size = kXRegSizeInBytes;
       break;
-    case LDRSH_x:
-      WriteXRegister(srcdst, MemRead<int16_t>(address), NoRegLog);
+    }
+    case LDRSH_x: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<int16_t>(address));
+      WriteXRegister(srcdst, value, NoRegLog);
       extend_to_size = kXRegSizeInBytes;
       break;
-    case LDRSW_x:
-      WriteXRegister(srcdst, MemRead<int32_t>(address), NoRegLog);
+    }
+    case LDRSW_x: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<int32_t>(address));
+      WriteXRegister(srcdst, value, NoRegLog);
       extend_to_size = kXRegSizeInBytes;
       break;
-    case LDR_b:
-      WriteBRegister(srcdst, MemRead<uint8_t>(address), NoRegLog);
+    }
+    case LDR_b: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<uint8_t>(address));
+      WriteBRegister(srcdst, value, NoRegLog);
       rt_is_vreg = true;
       break;
-    case LDR_h:
-      WriteHRegister(srcdst, MemRead<uint16_t>(address), NoRegLog);
+    }
+    case LDR_h: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<uint16_t>(address));
+      WriteHRegister(srcdst, value, NoRegLog);
       rt_is_vreg = true;
       break;
-    case LDR_s:
-      WriteSRegister(srcdst, MemRead<float>(address), NoRegLog);
+    }
+    case LDR_s: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<float>(address));
+      WriteSRegister(srcdst, value, NoRegLog);
       rt_is_vreg = true;
       break;
-    case LDR_d:
-      WriteDRegister(srcdst, MemRead<double>(address), NoRegLog);
+    }
+    case LDR_d: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<double>(address));
+      WriteDRegister(srcdst, value, NoRegLog);
       rt_is_vreg = true;
       break;
-    case LDR_q:
-      WriteQRegister(srcdst, MemRead<qreg_t>(address), NoRegLog);
+    }
+    case LDR_q: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<qreg_t>(address));
+      WriteQRegister(srcdst, value, NoRegLog);
       rt_is_vreg = true;
       break;
+    }
 
     case STRB_w:
-      MemWrite<uint8_t>(address, ReadWRegister(srcdst));
+      if (!MemWrite<uint8_t>(address, ReadWRegister(srcdst))) return;
       break;
     case STRH_w:
-      MemWrite<uint16_t>(address, ReadWRegister(srcdst));
+      if (!MemWrite<uint16_t>(address, ReadWRegister(srcdst))) return;
       break;
     case STR_w:
-      MemWrite<uint32_t>(address, ReadWRegister(srcdst));
+      if (!MemWrite<uint32_t>(address, ReadWRegister(srcdst))) return;
       break;
     case STR_x:
-      MemWrite<uint64_t>(address, ReadXRegister(srcdst));
+      if (!MemWrite<uint64_t>(address, ReadXRegister(srcdst))) return;
       break;
     case STR_b:
-      MemWrite<uint8_t>(address, ReadBRegister(srcdst));
+      if (!MemWrite<uint8_t>(address, ReadBRegister(srcdst))) return;
       rt_is_vreg = true;
       break;
     case STR_h:
-      MemWrite<uint16_t>(address, ReadHRegisterBits(srcdst));
+      if (!MemWrite<uint16_t>(address, ReadHRegisterBits(srcdst))) return;
       rt_is_vreg = true;
       break;
     case STR_s:
-      MemWrite<float>(address, ReadSRegister(srcdst));
+      if (!MemWrite<float>(address, ReadSRegister(srcdst))) return;
       rt_is_vreg = true;
       break;
     case STR_d:
-      MemWrite<double>(address, ReadDRegister(srcdst));
+      if (!MemWrite<double>(address, ReadDRegister(srcdst))) return;
       rt_is_vreg = true;
       break;
     case STR_q:
-      MemWrite<qreg_t>(address, ReadQRegister(srcdst));
+      if (!MemWrite<qreg_t>(address, ReadQRegister(srcdst))) return;
       rt_is_vreg = true;
       break;
 
@@ -4434,64 +4590,76 @@ void Simulator::LoadStorePairHelper(const Instruction* instr,
     // Use NoRegLog to suppress the register trace (LOG_REGS, LOG_FP_REGS). We
     // will print a more detailed log.
     case LDP_w: {
-      WriteWRegister(rt, MemRead<uint32_t>(address), NoRegLog);
-      WriteWRegister(rt2, MemRead<uint32_t>(address2), NoRegLog);
+      VIXL_DEFINE_OR_RETURN(value, MemRead<uint32_t>(address));
+      VIXL_DEFINE_OR_RETURN(value2, MemRead<uint32_t>(address2));
+      WriteWRegister(rt, value, NoRegLog);
+      WriteWRegister(rt2, value2, NoRegLog);
       break;
     }
     case LDP_s: {
-      WriteSRegister(rt, MemRead<float>(address), NoRegLog);
-      WriteSRegister(rt2, MemRead<float>(address2), NoRegLog);
+      VIXL_DEFINE_OR_RETURN(value, MemRead<float>(address));
+      VIXL_DEFINE_OR_RETURN(value2, MemRead<float>(address2));
+      WriteSRegister(rt, value, NoRegLog);
+      WriteSRegister(rt2, value2, NoRegLog);
       rt_is_vreg = true;
       break;
     }
     case LDP_x: {
-      WriteXRegister(rt, MemRead<uint64_t>(address), NoRegLog);
-      WriteXRegister(rt2, MemRead<uint64_t>(address2), NoRegLog);
+      VIXL_DEFINE_OR_RETURN(value, MemRead<uint64_t>(address));
+      VIXL_DEFINE_OR_RETURN(value2, MemRead<uint64_t>(address2));
+      WriteXRegister(rt, value, NoRegLog);
+      WriteXRegister(rt2, value2, NoRegLog);
       break;
     }
     case LDP_d: {
-      WriteDRegister(rt, MemRead<double>(address), NoRegLog);
-      WriteDRegister(rt2, MemRead<double>(address2), NoRegLog);
+      VIXL_DEFINE_OR_RETURN(value, MemRead<double>(address));
+      VIXL_DEFINE_OR_RETURN(value2, MemRead<double>(address2));
+      WriteDRegister(rt, value, NoRegLog);
+      WriteDRegister(rt2, value2, NoRegLog);
       rt_is_vreg = true;
       break;
     }
     case LDP_q: {
-      WriteQRegister(rt, MemRead<qreg_t>(address), NoRegLog);
-      WriteQRegister(rt2, MemRead<qreg_t>(address2), NoRegLog);
+      VIXL_DEFINE_OR_RETURN(value, MemRead<qreg_t>(address));
+      VIXL_DEFINE_OR_RETURN(value2, MemRead<qreg_t>(address2));
+      WriteQRegister(rt, value, NoRegLog);
+      WriteQRegister(rt2, value2, NoRegLog);
       rt_is_vreg = true;
       break;
     }
     case LDPSW_x: {
-      WriteXRegister(rt, MemRead<int32_t>(address), NoRegLog);
-      WriteXRegister(rt2, MemRead<int32_t>(address2), NoRegLog);
+      VIXL_DEFINE_OR_RETURN(value, MemRead<int32_t>(address));
+      VIXL_DEFINE_OR_RETURN(value2, MemRead<int32_t>(address2));
+      WriteXRegister(rt, value, NoRegLog);
+      WriteXRegister(rt2, value2, NoRegLog);
       sign_extend = true;
       break;
     }
     case STP_w: {
-      MemWrite<uint32_t>(address, ReadWRegister(rt));
-      MemWrite<uint32_t>(address2, ReadWRegister(rt2));
+      if (!MemWrite<uint32_t>(address, ReadWRegister(rt))) return;
+      if (!MemWrite<uint32_t>(address2, ReadWRegister(rt2))) return;
       break;
     }
     case STP_s: {
-      MemWrite<float>(address, ReadSRegister(rt));
-      MemWrite<float>(address2, ReadSRegister(rt2));
+      if (!MemWrite<float>(address, ReadSRegister(rt))) return;
+      if (!MemWrite<float>(address2, ReadSRegister(rt2))) return;
       rt_is_vreg = true;
       break;
     }
     case STP_x: {
-      MemWrite<uint64_t>(address, ReadXRegister(rt));
-      MemWrite<uint64_t>(address2, ReadXRegister(rt2));
+      if (!MemWrite<uint64_t>(address, ReadXRegister(rt))) return;
+      if (!MemWrite<uint64_t>(address2, ReadXRegister(rt2))) return;
       break;
     }
     case STP_d: {
-      MemWrite<double>(address, ReadDRegister(rt));
-      MemWrite<double>(address2, ReadDRegister(rt2));
+      if (!MemWrite<double>(address, ReadDRegister(rt))) return;
+      if (!MemWrite<double>(address2, ReadDRegister(rt2))) return;
       rt_is_vreg = true;
       break;
     }
     case STP_q: {
-      MemWrite<qreg_t>(address, ReadQRegister(rt));
-      MemWrite<qreg_t>(address2, ReadQRegister(rt2));
+      if (!MemWrite<qreg_t>(address, ReadQRegister(rt))) return;
+      if (!MemWrite<qreg_t>(address2, ReadQRegister(rt2))) return;
       rt_is_vreg = true;
       break;
     }
@@ -4551,7 +4719,8 @@ void Simulator::CompareAndSwapHelper(const Instruction* instr) {
   // associated with that location, even if the compare subsequently fails.
   local_monitor_.Clear();
 
-  T data = MemRead<T>(address);
+  VIXL_DEFINE_OR_RETURN(data, MemRead<T>(address));
+
   if (is_acquire) {
     // Approximate load-acquire by issuing a full barrier after the load.
     __sync_synchronize();
@@ -4562,7 +4731,7 @@ void Simulator::CompareAndSwapHelper(const Instruction* instr) {
       // Approximate store-release by issuing a full barrier before the store.
       __sync_synchronize();
     }
-    MemWrite<T>(address, newvalue);
+    if (!MemWrite<T>(address, newvalue)) return;
     LogWrite(rt, GetPrintRegisterFormatForSize(element_size), address);
   }
   WriteRegister<T>(rs, data, NoRegLog);
@@ -4598,8 +4767,8 @@ void Simulator::CompareAndSwapPairHelper(const Instruction* instr) {
   // associated with that location, even if the compare subsequently fails.
   local_monitor_.Clear();
 
-  T data_low = MemRead<T>(address);
-  T data_high = MemRead<T>(address2);
+  VIXL_DEFINE_OR_RETURN(data_low, MemRead<T>(address));
+  VIXL_DEFINE_OR_RETURN(data_high, MemRead<T>(address2));
 
   if (is_acquire) {
     // Approximate load-acquire by issuing a full barrier after the load.
@@ -4614,8 +4783,8 @@ void Simulator::CompareAndSwapPairHelper(const Instruction* instr) {
       __sync_synchronize();
     }
 
-    MemWrite<T>(address, newvalue_low);
-    MemWrite<T>(address2, newvalue_high);
+    if (!MemWrite<T>(address, newvalue_low)) return;
+    if (!MemWrite<T>(address2, newvalue_high)) return;
   }
 
   WriteRegister<T>(rs + 1, data_high, NoRegLog);
@@ -4782,47 +4951,59 @@ void Simulator::VisitLoadStoreExclusive(const Instruction* instr) {
           case LDXRB_w:
           case LDAXRB_w:
           case LDARB_w:
-          case LDLARB:
-            WriteWRegister(rt, MemRead<uint8_t>(address), NoRegLog);
+          case LDLARB: {
+            VIXL_DEFINE_OR_RETURN(value, MemRead<uint8_t>(address));
+            WriteWRegister(rt, value, NoRegLog);
             reg_size = kWRegSizeInBytes;
             break;
+          }
           case LDXRH_w:
           case LDAXRH_w:
           case LDARH_w:
-          case LDLARH:
-            WriteWRegister(rt, MemRead<uint16_t>(address), NoRegLog);
+          case LDLARH: {
+            VIXL_DEFINE_OR_RETURN(value, MemRead<uint16_t>(address));
+            WriteWRegister(rt, value, NoRegLog);
             reg_size = kWRegSizeInBytes;
             break;
+          }
           case LDXR_w:
           case LDAXR_w:
           case LDAR_w:
-          case LDLAR_w:
-            WriteWRegister(rt, MemRead<uint32_t>(address), NoRegLog);
+          case LDLAR_w: {
+            VIXL_DEFINE_OR_RETURN(value, MemRead<uint32_t>(address));
+            WriteWRegister(rt, value, NoRegLog);
             reg_size = kWRegSizeInBytes;
             break;
+          }
           case LDXR_x:
           case LDAXR_x:
           case LDAR_x:
-          case LDLAR_x:
-            WriteXRegister(rt, MemRead<uint64_t>(address), NoRegLog);
+          case LDLAR_x: {
+            VIXL_DEFINE_OR_RETURN(value, MemRead<uint64_t>(address));
+            WriteXRegister(rt, value, NoRegLog);
             reg_size = kXRegSizeInBytes;
             break;
+          }
           case LDXP_w:
-          case LDAXP_w:
-            WriteWRegister(rt, MemRead<uint32_t>(address), NoRegLog);
-            WriteWRegister(rt2,
-                           MemRead<uint32_t>(address + element_size),
-                           NoRegLog);
+          case LDAXP_w: {
+            VIXL_DEFINE_OR_RETURN(value, MemRead<uint32_t>(address));
+            VIXL_DEFINE_OR_RETURN(value2,
+                                  MemRead<uint32_t>(address + element_size));
+            WriteWRegister(rt, value, NoRegLog);
+            WriteWRegister(rt2, value2, NoRegLog);
             reg_size = kWRegSizeInBytes;
             break;
+          }
           case LDXP_x:
-          case LDAXP_x:
-            WriteXRegister(rt, MemRead<uint64_t>(address), NoRegLog);
-            WriteXRegister(rt2,
-                           MemRead<uint64_t>(address + element_size),
-                           NoRegLog);
+          case LDAXP_x: {
+            VIXL_DEFINE_OR_RETURN(value, MemRead<uint64_t>(address));
+            VIXL_DEFINE_OR_RETURN(value2,
+                                  MemRead<uint64_t>(address + element_size));
+            WriteXRegister(rt, value, NoRegLog);
+            WriteXRegister(rt2, value2, NoRegLog);
             reg_size = kXRegSizeInBytes;
             break;
+          }
           default:
             VIXL_UNREACHABLE();
         }
@@ -4863,35 +5044,41 @@ void Simulator::VisitLoadStoreExclusive(const Instruction* instr) {
             case STLXRB_w:
             case STLRB_w:
             case STLLRB:
-              MemWrite<uint8_t>(address, ReadWRegister(rt));
+              if (!MemWrite<uint8_t>(address, ReadWRegister(rt))) return;
               break;
             case STXRH_w:
             case STLXRH_w:
             case STLRH_w:
             case STLLRH:
-              MemWrite<uint16_t>(address, ReadWRegister(rt));
+              if (!MemWrite<uint16_t>(address, ReadWRegister(rt))) return;
               break;
             case STXR_w:
             case STLXR_w:
             case STLR_w:
             case STLLR_w:
-              MemWrite<uint32_t>(address, ReadWRegister(rt));
+              if (!MemWrite<uint32_t>(address, ReadWRegister(rt))) return;
               break;
             case STXR_x:
             case STLXR_x:
             case STLR_x:
             case STLLR_x:
-              MemWrite<uint64_t>(address, ReadXRegister(rt));
+              if (!MemWrite<uint64_t>(address, ReadXRegister(rt))) return;
               break;
             case STXP_w:
             case STLXP_w:
-              MemWrite<uint32_t>(address, ReadWRegister(rt));
-              MemWrite<uint32_t>(address + element_size, ReadWRegister(rt2));
+              if (!MemWrite<uint32_t>(address, ReadWRegister(rt))) return;
+              if (!MemWrite<uint32_t>(address + element_size,
+                                      ReadWRegister(rt2))) {
+                return;
+              }
               break;
             case STXP_x:
             case STLXP_x:
-              MemWrite<uint64_t>(address, ReadXRegister(rt));
-              MemWrite<uint64_t>(address + element_size, ReadXRegister(rt2));
+              if (!MemWrite<uint64_t>(address, ReadXRegister(rt))) return;
+              if (!MemWrite<uint64_t>(address + element_size,
+                                      ReadXRegister(rt2))) {
+                return;
+              }
               break;
             default:
               VIXL_UNREACHABLE();
@@ -4924,7 +5111,7 @@ void Simulator::AtomicMemorySimpleHelper(const Instruction* instr) {
 
   T value = ReadRegister<T>(rs);
 
-  T data = MemRead<T>(address);
+  VIXL_DEFINE_OR_RETURN(data, MemRead<T>(address));
 
   if (is_acquire) {
     // Approximate load-acquire by issuing a full barrier after the load.
@@ -4974,7 +5161,7 @@ void Simulator::AtomicMemorySimpleHelper(const Instruction* instr) {
   PrintRegisterFormat format = GetPrintRegisterFormatForSize(register_size);
   LogExtendingRead(rt, format, element_size, address);
 
-  MemWrite<T>(address, result);
+  if (!MemWrite<T>(address, result)) return;
   format = GetPrintRegisterFormatForSize(element_size);
   LogWrite(rs, format, address);
 }
@@ -4993,7 +5180,8 @@ void Simulator::AtomicMemorySwapHelper(const Instruction* instr) {
 
   CheckIsValidUnalignedAtomicAccess(rn, address, element_size);
 
-  T data = MemRead<T>(address);
+  VIXL_DEFINE_OR_RETURN(data, MemRead<T>(address));
+
   if (is_acquire) {
     // Approximate load-acquire by issuing a full barrier after the load.
     __sync_synchronize();
@@ -5003,7 +5191,7 @@ void Simulator::AtomicMemorySwapHelper(const Instruction* instr) {
     // Approximate store-release by issuing a full barrier before the store.
     __sync_synchronize();
   }
-  MemWrite<T>(address, ReadRegister<T>(rs));
+  if (!MemWrite<T>(address, ReadRegister<T>(rs))) return;
 
   WriteRegister<T>(rt, data);
 
@@ -5022,7 +5210,9 @@ void Simulator::LoadAcquireRCpcHelper(const Instruction* instr) {
 
   CheckIsValidUnalignedAtomicAccess(rn, address, element_size);
 
-  WriteRegister<T>(rt, MemRead<T>(address));
+  VIXL_DEFINE_OR_RETURN(value, MemRead<T>(address));
+
+  WriteRegister<T>(rt, value);
 
   // Approximate load-acquire by issuing a full barrier after the load.
   __sync_synchronize();
@@ -5090,7 +5280,7 @@ void Simulator::VisitAtomicMemory(const Instruction* instr) {
     ATOMIC_MEMORY_SIMPLE_INT_LIST(SIM_FUNC_x)
       AtomicMemorySimpleHelper<int64_t>(instr);
       break;
-    // clang-format on
+      // clang-format on
 
     case SWPB:
     case SWPAB:
@@ -5142,30 +5332,42 @@ void Simulator::VisitLoadLiteral(const Instruction* instr) {
   switch (instr->Mask(LoadLiteralMask)) {
     // Use NoRegLog to suppress the register trace (LOG_REGS, LOG_VREGS), then
     // print a more detailed log.
-    case LDR_w_lit:
-      WriteWRegister(rt, MemRead<uint32_t>(address), NoRegLog);
+    case LDR_w_lit: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<uint32_t>(address));
+      WriteWRegister(rt, value, NoRegLog);
       LogRead(rt, kPrintWReg, address);
       break;
-    case LDR_x_lit:
-      WriteXRegister(rt, MemRead<uint64_t>(address), NoRegLog);
+    }
+    case LDR_x_lit: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<uint64_t>(address));
+      WriteXRegister(rt, value, NoRegLog);
       LogRead(rt, kPrintXReg, address);
       break;
-    case LDR_s_lit:
-      WriteSRegister(rt, MemRead<float>(address), NoRegLog);
+    }
+    case LDR_s_lit: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<float>(address));
+      WriteSRegister(rt, value, NoRegLog);
       LogVRead(rt, kPrintSRegFP, address);
       break;
-    case LDR_d_lit:
-      WriteDRegister(rt, MemRead<double>(address), NoRegLog);
+    }
+    case LDR_d_lit: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<double>(address));
+      WriteDRegister(rt, value, NoRegLog);
       LogVRead(rt, kPrintDRegFP, address);
       break;
-    case LDR_q_lit:
-      WriteQRegister(rt, MemRead<qreg_t>(address), NoRegLog);
+    }
+    case LDR_q_lit: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<qreg_t>(address));
+      WriteQRegister(rt, value, NoRegLog);
       LogVRead(rt, kPrintReg1Q, address);
       break;
-    case LDRSW_x_lit:
-      WriteXRegister(rt, MemRead<int32_t>(address), NoRegLog);
+    }
+    case LDRSW_x_lit: {
+      VIXL_DEFINE_OR_RETURN(value, MemRead<int32_t>(address));
+      WriteXRegister(rt, value, NoRegLog);
       LogExtendingRead(rt, kPrintXReg, kWRegSizeInBytes, address);
       break;
+    }
 
     // Ignore prfm hint instructions.
     case PRFM_lit:
@@ -5994,6 +6196,8 @@ void Simulator::VisitFPIntegerConvert(const Instruction* instr) {
       WriteDRegisterBits(dst, ReadXRegister(src));
       break;
     case FMOV_d1_x:
+      // Zero bits beyond the MSB of a Q register.
+      mov(kFormat16B, ReadVRegister(dst), ReadVRegister(dst));
       LogicVRegister(ReadVRegister(dst))
           .SetUint(kFormatD, 1, ReadXRegister(src));
       break;
@@ -6663,7 +6867,7 @@ void Simulator::SysOp_W(int op, int64_t val) {
       // so temporarily disable MTE.
       bool mte_enabled = MetaDataDepot::MetaDataMTE::IsActive();
       MetaDataDepot::MetaDataMTE::SetActive(false);
-      volatile uint8_t y = MemRead<uint8_t>(val);
+      volatile uint8_t y = *MemRead<uint8_t>(val);
       MetaDataDepot::MetaDataMTE::SetActive(mte_enabled);
       USE(y);
       // TODO: Implement ZVA, GVA, GZVA.
@@ -6758,6 +6962,14 @@ void Simulator::VisitSystem(const Instruction* instr) {
           VIXL_UNIMPLEMENTED();
       }
       break;
+    case "chkfeat_hf_hints"_h: {
+      uint64_t feat_select = ReadXRegister(16);
+      uint64_t gcs_enabled = IsGCSCheckEnabled() ? 1 : 0;
+      feat_select &= ~gcs_enabled;
+      WriteXRegister(16, feat_select);
+      break;
+    }
+    case "hint_hm_hints"_h:
     case "nop_hi_hints"_h:
     case "esb_hi_hints"_h:
     case "csdb_hi_hints"_h:
@@ -6841,9 +7053,64 @@ void Simulator::VisitSystem(const Instruction* instr) {
     case "isb_bi_barriers"_h:
       __sync_synchronize();
       break;
-    case "sys_cr_systeminstrs"_h:
-      SysOp_W(instr->GetSysOp(), ReadXRegister(instr->GetRt()));
+    case "sys_cr_systeminstrs"_h: {
+      uint64_t rt = ReadXRegister(instr->GetRt());
+      uint32_t sysop = instr->GetSysOp();
+      if (sysop == GCSSS1) {
+        uint64_t incoming_size = rt >> 32;
+        // Drop upper 32 bits to get GCS index.
+        uint64_t incoming_gcs = rt & 0xffffffff;
+        uint64_t outgoing_gcs = ActivateGCS(incoming_gcs);
+        uint64_t incoming_seal = GCSPop();
+        if (((incoming_seal ^ rt) != 1) ||
+            (GetActiveGCSPtr()->size() != incoming_size)) {
+          char msg[128];
+          snprintf(msg,
+                   sizeof(msg),
+                   "GCS: invalid incoming stack: 0x%016" PRIx64 "\n",
+                   incoming_seal);
+          ReportGCSFailure(msg);
+        }
+        GCSPush(outgoing_gcs + 5);
+      } else if (sysop == GCSPUSHM) {
+        GCSPush(ReadXRegister(instr->GetRt()));
+      } else {
+        SysOp_W(sysop, rt);
+      }
       break;
+    }
+    case "sysl_rc_systeminstrs"_h: {
+      uint32_t sysop = instr->GetSysOp();
+      if (sysop == GCSPOPM) {
+        uint64_t addr = GCSPop();
+        WriteXRegister(instr->GetRt(), addr);
+      } else if (sysop == GCSSS2) {
+        uint64_t outgoing_gcs = GCSPop();
+        // Check for token inserted by gcsss1.
+        if ((outgoing_gcs & 7) != 5) {
+          char msg[128];
+          snprintf(msg,
+                   sizeof(msg),
+                   "GCS: outgoing stack has no token: 0x%016" PRIx64 "\n",
+                   outgoing_gcs);
+          ReportGCSFailure(msg);
+        }
+        uint64_t incoming_gcs = ActivateGCS(outgoing_gcs);
+        outgoing_gcs &= ~UINT64_C(0x3ff);
+
+        // Encode the size into the outgoing stack seal, to check later.
+        uint64_t size = GetActiveGCSPtr()->size();
+        VIXL_ASSERT(IsUint32(size));
+        VIXL_ASSERT(IsUint32(outgoing_gcs + 1));
+        uint64_t outgoing_seal = (size << 32) | (outgoing_gcs + 1);
+        GCSPush(outgoing_seal);
+        ActivateGCS(incoming_gcs);
+        WriteXRegister(instr->GetRt(), outgoing_seal - 1);
+      } else {
+        VIXL_UNIMPLEMENTED();
+      }
+      break;
+    }
     default:
       VIXL_UNIMPLEMENTED();
   }
@@ -6908,12 +7175,66 @@ void Simulator::VisitException(const Instruction* instr) {
 
 
 void Simulator::VisitCrypto2RegSHA(const Instruction* instr) {
-  VisitUnimplemented(instr);
+  SimVRegister& rd = ReadVRegister(instr->GetRd());
+  SimVRegister& rn = ReadVRegister(instr->GetRn());
+
+  switch (form_hash_) {
+    case "sha1h_ss_cryptosha2"_h:
+      ror(kFormatS, rd, rn, 2);
+      break;
+    case "sha1su1_vv_cryptosha2"_h: {
+      SimVRegister temp;
+
+      // temp = srcdst ^ (src >> 32);
+      ext(kFormat16B, temp, rn, temp, 4);
+      eor(kFormat16B, temp, rd, temp);
+
+      // srcdst = ROL(temp, 1) ^ (ROL(temp, 2) << 96)
+      rol(kFormat4S, rd, temp, 1);
+      rol(kFormatS, temp, temp, 2);  // kFormatS will zero bits <127:32>
+      ext(kFormat16B, temp, temp, temp, 4);
+      eor(kFormat16B, rd, rd, temp);
+      break;
+    }
+    case "sha256su0_vv_cryptosha2"_h:
+      sha2su0(rd, rn);
+      break;
+  }
 }
 
 
 void Simulator::VisitCrypto3RegSHA(const Instruction* instr) {
-  VisitUnimplemented(instr);
+  SimVRegister& rd = ReadVRegister(instr->GetRd());
+  SimVRegister& rn = ReadVRegister(instr->GetRn());
+  SimVRegister& rm = ReadVRegister(instr->GetRm());
+
+  switch (form_hash_) {
+    case "sha1c_qsv_cryptosha3"_h:
+      sha1<"choose"_h>(rd, rn, rm);
+      break;
+    case "sha1m_qsv_cryptosha3"_h:
+      sha1<"majority"_h>(rd, rn, rm);
+      break;
+    case "sha1p_qsv_cryptosha3"_h:
+      sha1<"parity"_h>(rd, rn, rm);
+      break;
+    case "sha1su0_vvv_cryptosha3"_h: {
+      SimVRegister temp;
+      ext(kFormat16B, temp, rd, rn, 8);
+      eor(kFormat16B, temp, temp, rd);
+      eor(kFormat16B, rd, temp, rm);
+      break;
+    }
+    case "sha256h_qqv_cryptosha3"_h:
+      sha2h(rd, rn, rm, /* part1 = */ true);
+      break;
+    case "sha256h2_qqv_cryptosha3"_h:
+      sha2h(rd, rn, rm, /* part1 = */ false);
+      break;
+    case "sha256su1_vvv_cryptosha3"_h:
+      sha2su1(rd, rn, rm);
+      break;
+  }
 }
 
 
@@ -6921,6 +7242,26 @@ void Simulator::VisitCryptoAES(const Instruction* instr) {
   VisitUnimplemented(instr);
 }
 
+void Simulator::SimulateSHA512(const Instruction* instr) {
+  SimVRegister& rd = ReadVRegister(instr->GetRd());
+  SimVRegister& rn = ReadVRegister(instr->GetRn());
+  SimVRegister& rm = ReadVRegister(instr->GetRm());
+
+  switch (form_hash_) {
+    case "sha512h_qqv_cryptosha512_3"_h:
+      sha512h(rd, rn, rm);
+      break;
+    case "sha512h2_qqv_cryptosha512_3"_h:
+      sha512h2(rd, rn, rm);
+      break;
+    case "sha512su0_vv2_cryptosha512_2"_h:
+      sha512su0(rd, rn);
+      break;
+    case "sha512su1_vvv2_cryptosha512_3"_h:
+      sha512su1(rd, rn, rm);
+      break;
+  }
+}
 
 void Simulator::VisitNEON2RegMisc(const Instruction* instr) {
   NEONFormatDecoder nfd(instr);
@@ -7684,13 +8025,24 @@ void Simulator::VisitNEON3Different(const Instruction* instr) {
   SimVRegister& rd = ReadVRegister(instr->GetRd());
   SimVRegister& rn = ReadVRegister(instr->GetRn());
   SimVRegister& rm = ReadVRegister(instr->GetRm());
+  int size = instr->GetNEONSize();
 
   switch (instr->Mask(NEON3DifferentMask)) {
     case NEON_PMULL:
-      pmull(vf_l, rd, rn, rm);
+      if ((size == 1) || (size == 2)) {  // S/D reserved.
+        VisitUnallocated(instr);
+      } else {
+        if (size == 3) vf_l = kFormat1Q;
+        pmull(vf_l, rd, rn, rm);
+      }
       break;
     case NEON_PMULL2:
-      pmull2(vf_l, rd, rn, rm);
+      if ((size == 1) || (size == 2)) {  // S/D reserved.
+        VisitUnallocated(instr);
+      } else {
+        if (size == 3) vf_l = kFormat1Q;
+        pmull2(vf_l, rd, rn, rm);
+      }
       break;
     case NEON_UADDL:
       uaddl(vf_l, rd, rn, rm);
@@ -8160,8 +8512,10 @@ void Simulator::VisitNEONCopy(const Instruction* instr) {
   if (instr->Mask(NEONCopyInsElementMask) == NEON_INS_ELEMENT) {
     int imm4 = instr->GetImmNEON4();
     int rn_index = ExtractSignedBitfield32(31, tz, imm4);
+    mov(kFormat16B, rd, rd);  // Zero bits beyond the MSB of a Q register.
     ins_element(vf, rd, reg_index, rn, rn_index);
   } else if (instr->Mask(NEONCopyInsGeneralMask) == NEON_INS_GENERAL) {
+    mov(kFormat16B, rd, rd);  // Zero bits beyond the MSB of a Q register.
     ins_immediate(vf, rd, reg_index, ReadXRegister(instr->GetRn()));
   } else if (instr->Mask(NEONCopyUmovMask) == NEON_UMOV) {
     uint64_t value = LogicVRegister(rn).Uint(vf, reg_index);
@@ -8229,97 +8583,117 @@ void Simulator::NEONLoadStoreMultiStructHelper(const Instruction* instr,
   switch (instr->Mask(NEONLoadStoreMultiStructPostIndexMask)) {
     case NEON_LD1_4v:
     case NEON_LD1_4v_post:
-      ld1(vf, ReadVRegister(reg[3]), addr[3]);
+      if (!ld1(vf, ReadVRegister(reg[3]), addr[3])) {
+        return;
+      }
       reg_count++;
       VIXL_FALLTHROUGH();
     case NEON_LD1_3v:
     case NEON_LD1_3v_post:
-      ld1(vf, ReadVRegister(reg[2]), addr[2]);
+      if (!ld1(vf, ReadVRegister(reg[2]), addr[2])) {
+        return;
+      }
       reg_count++;
       VIXL_FALLTHROUGH();
     case NEON_LD1_2v:
     case NEON_LD1_2v_post:
-      ld1(vf, ReadVRegister(reg[1]), addr[1]);
+      if (!ld1(vf, ReadVRegister(reg[1]), addr[1])) {
+        return;
+      }
       reg_count++;
       VIXL_FALLTHROUGH();
     case NEON_LD1_1v:
     case NEON_LD1_1v_post:
-      ld1(vf, ReadVRegister(reg[0]), addr[0]);
+      if (!ld1(vf, ReadVRegister(reg[0]), addr[0])) {
+        return;
+      }
       break;
     case NEON_ST1_4v:
     case NEON_ST1_4v_post:
-      st1(vf, ReadVRegister(reg[3]), addr[3]);
+      if (!st1(vf, ReadVRegister(reg[3]), addr[3])) return;
       reg_count++;
       VIXL_FALLTHROUGH();
     case NEON_ST1_3v:
     case NEON_ST1_3v_post:
-      st1(vf, ReadVRegister(reg[2]), addr[2]);
+      if (!st1(vf, ReadVRegister(reg[2]), addr[2])) return;
       reg_count++;
       VIXL_FALLTHROUGH();
     case NEON_ST1_2v:
     case NEON_ST1_2v_post:
-      st1(vf, ReadVRegister(reg[1]), addr[1]);
+      if (!st1(vf, ReadVRegister(reg[1]), addr[1])) return;
       reg_count++;
       VIXL_FALLTHROUGH();
     case NEON_ST1_1v:
     case NEON_ST1_1v_post:
-      st1(vf, ReadVRegister(reg[0]), addr[0]);
+      if (!st1(vf, ReadVRegister(reg[0]), addr[0])) return;
       log_read = false;
       break;
     case NEON_LD2_post:
     case NEON_LD2:
-      ld2(vf, ReadVRegister(reg[0]), ReadVRegister(reg[1]), addr[0]);
+      if (!ld2(vf, ReadVRegister(reg[0]), ReadVRegister(reg[1]), addr[0])) {
+        return;
+      }
       struct_parts = 2;
       reg_count = 2;
       break;
     case NEON_ST2:
     case NEON_ST2_post:
-      st2(vf, ReadVRegister(reg[0]), ReadVRegister(reg[1]), addr[0]);
+      if (!st2(vf, ReadVRegister(reg[0]), ReadVRegister(reg[1]), addr[0])) {
+        return;
+      }
       struct_parts = 2;
       reg_count = 2;
       log_read = false;
       break;
     case NEON_LD3_post:
     case NEON_LD3:
-      ld3(vf,
-          ReadVRegister(reg[0]),
-          ReadVRegister(reg[1]),
-          ReadVRegister(reg[2]),
-          addr[0]);
+      if (!ld3(vf,
+               ReadVRegister(reg[0]),
+               ReadVRegister(reg[1]),
+               ReadVRegister(reg[2]),
+               addr[0])) {
+        return;
+      }
       struct_parts = 3;
       reg_count = 3;
       break;
     case NEON_ST3:
     case NEON_ST3_post:
-      st3(vf,
-          ReadVRegister(reg[0]),
-          ReadVRegister(reg[1]),
-          ReadVRegister(reg[2]),
-          addr[0]);
+      if (!st3(vf,
+               ReadVRegister(reg[0]),
+               ReadVRegister(reg[1]),
+               ReadVRegister(reg[2]),
+               addr[0])) {
+        return;
+      }
       struct_parts = 3;
       reg_count = 3;
       log_read = false;
       break;
     case NEON_ST4:
     case NEON_ST4_post:
-      st4(vf,
-          ReadVRegister(reg[0]),
-          ReadVRegister(reg[1]),
-          ReadVRegister(reg[2]),
-          ReadVRegister(reg[3]),
-          addr[0]);
+      if (!st4(vf,
+               ReadVRegister(reg[0]),
+               ReadVRegister(reg[1]),
+               ReadVRegister(reg[2]),
+               ReadVRegister(reg[3]),
+               addr[0])) {
+        return;
+      }
       struct_parts = 4;
       reg_count = 4;
       log_read = false;
       break;
     case NEON_LD4_post:
     case NEON_LD4:
-      ld4(vf,
-          ReadVRegister(reg[0]),
-          ReadVRegister(reg[1]),
-          ReadVRegister(reg[2]),
-          ReadVRegister(reg[3]),
-          addr[0]);
+      if (!ld4(vf,
+               ReadVRegister(reg[0]),
+               ReadVRegister(reg[1]),
+               ReadVRegister(reg[2]),
+               ReadVRegister(reg[3]),
+               addr[0])) {
+        return;
+      }
       struct_parts = 4;
       reg_count = 4;
       break;
@@ -8494,75 +8868,95 @@ void Simulator::NEONLoadStoreSingleStructHelper(const Instruction* instr,
       reg_count = 1;
       if (replicating) {
         VIXL_ASSERT(do_load);
-        ld1r(vf, ReadVRegister(rt), addr);
+        if (!ld1r(vf, ReadVRegister(rt), addr)) {
+          return;
+        }
       } else if (do_load) {
-        ld1(vf, ReadVRegister(rt), lane, addr);
+        if (!ld1(vf, ReadVRegister(rt), lane, addr)) {
+          return;
+        }
       } else {
-        st1(vf, ReadVRegister(rt), lane, addr);
+        if (!st1(vf, ReadVRegister(rt), lane, addr)) return;
       }
       break;
     case NEONLoadStoreSingle2:
       reg_count = 2;
       if (replicating) {
         VIXL_ASSERT(do_load);
-        ld2r(vf, ReadVRegister(rt), ReadVRegister(rt2), addr);
+        if (!ld2r(vf, ReadVRegister(rt), ReadVRegister(rt2), addr)) {
+          return;
+        }
       } else if (do_load) {
-        ld2(vf, ReadVRegister(rt), ReadVRegister(rt2), lane, addr);
+        if (!ld2(vf, ReadVRegister(rt), ReadVRegister(rt2), lane, addr)) {
+          return;
+        }
       } else {
-        st2(vf, ReadVRegister(rt), ReadVRegister(rt2), lane, addr);
+        if (!st2(vf, ReadVRegister(rt), ReadVRegister(rt2), lane, addr)) return;
       }
       break;
     case NEONLoadStoreSingle3:
       reg_count = 3;
       if (replicating) {
         VIXL_ASSERT(do_load);
-        ld3r(vf,
-             ReadVRegister(rt),
-             ReadVRegister(rt2),
-             ReadVRegister(rt3),
-             addr);
+        if (!ld3r(vf,
+                  ReadVRegister(rt),
+                  ReadVRegister(rt2),
+                  ReadVRegister(rt3),
+                  addr)) {
+          return;
+        }
       } else if (do_load) {
-        ld3(vf,
-            ReadVRegister(rt),
-            ReadVRegister(rt2),
-            ReadVRegister(rt3),
-            lane,
-            addr);
+        if (!ld3(vf,
+                 ReadVRegister(rt),
+                 ReadVRegister(rt2),
+                 ReadVRegister(rt3),
+                 lane,
+                 addr)) {
+          return;
+        }
       } else {
-        st3(vf,
-            ReadVRegister(rt),
-            ReadVRegister(rt2),
-            ReadVRegister(rt3),
-            lane,
-            addr);
+        if (!st3(vf,
+                 ReadVRegister(rt),
+                 ReadVRegister(rt2),
+                 ReadVRegister(rt3),
+                 lane,
+                 addr)) {
+          return;
+        }
       }
       break;
     case NEONLoadStoreSingle4:
       reg_count = 4;
       if (replicating) {
         VIXL_ASSERT(do_load);
-        ld4r(vf,
-             ReadVRegister(rt),
-             ReadVRegister(rt2),
-             ReadVRegister(rt3),
-             ReadVRegister(rt4),
-             addr);
+        if (!ld4r(vf,
+                  ReadVRegister(rt),
+                  ReadVRegister(rt2),
+                  ReadVRegister(rt3),
+                  ReadVRegister(rt4),
+                  addr)) {
+          return;
+        }
       } else if (do_load) {
-        ld4(vf,
-            ReadVRegister(rt),
-            ReadVRegister(rt2),
-            ReadVRegister(rt3),
-            ReadVRegister(rt4),
-            lane,
-            addr);
+        if (!ld4(vf,
+                 ReadVRegister(rt),
+                 ReadVRegister(rt2),
+                 ReadVRegister(rt3),
+                 ReadVRegister(rt4),
+                 lane,
+                 addr)) {
+          return;
+        }
       } else {
-        st4(vf,
-            ReadVRegister(rt),
-            ReadVRegister(rt2),
-            ReadVRegister(rt3),
-            ReadVRegister(rt4),
-            lane,
-            addr);
+        if (!st4(vf,
+                 ReadVRegister(rt),
+                 ReadVRegister(rt2),
+                 ReadVRegister(rt3),
+                 ReadVRegister(rt4),
+                 lane,
+                 addr)) {
+          return;
+        }
       }
       break;
     default:
@@ -9611,6 +10005,34 @@ void Simulator::VisitNEONPerm(const Instruction* instr) {
       break;
     default:
       VIXL_UNIMPLEMENTED();
+  }
+}
+
+void Simulator::SimulateNEONSHA3(const Instruction* instr) {
+  SimVRegister& rd = ReadVRegister(instr->GetRd());
+  SimVRegister& rn = ReadVRegister(instr->GetRn());
+  SimVRegister& rm = ReadVRegister(instr->GetRm());
+  SimVRegister& ra = ReadVRegister(instr->GetRa());
+  SimVRegister temp;
+
+  switch (form_hash_) {
+    case "bcax_vvv16_crypto4"_h:
+      bic(kFormat16B, temp, rm, ra);
+      eor(kFormat16B, rd, rn, temp);
+      break;
+    case "eor3_vvv16_crypto4"_h:
+      eor(kFormat16B, temp, rm, ra);
+      eor(kFormat16B, rd, rn, temp);
+      break;
+    case "rax1_vvv2_cryptosha512_3"_h:
+      ror(kFormat2D, temp, rm, 63);  // rol(1) => ror(63)
+      eor(kFormat2D, rd, rn, temp);
+      break;
+    case "xar_vvv2_crypto3_imm6"_h:
+      int rot = instr->ExtractBits(15, 10);
+      eor(kFormat2D, temp, rn, rm);
+      ror(kFormat2D, rd, temp, rot);
+      break;
   }
 }
 
@@ -12042,7 +12464,7 @@ void Simulator::VisitSVELoadAndBroadcastElement(const Instruction* instr) {
   VectorFormat unpack_vform =
       SVEFormatFromLaneSizeInBytesLog2(msize_in_bytes_log2);
   SimVRegister temp;
-  ld1r(vform, unpack_vform, temp, base, is_signed);
+  if (!ld1r(vform, unpack_vform, temp, base, is_signed)) return;
   mov_zeroing(vform,
               ReadVRegister(instr->GetRt()),
               ReadPRegister(instr->GetPgLow8()),
@@ -12059,7 +12481,8 @@ void Simulator::VisitSVELoadPredicateRegister(const Instruction* instr) {
       uint64_t base = ReadXRegister(instr->GetRn(), Reg31IsStackPointer);
       uint64_t address = base + multiplier * pl;
       for (int i = 0; i < pl; i++) {
-        pt.Insert(i, MemRead<uint8_t>(address + i));
+        VIXL_DEFINE_OR_RETURN(value, MemRead<uint8_t>(address + i));
+        pt.Insert(i, value);
       }
       LogPRead(instr->GetPt(), address);
       break;
@@ -12080,7 +12503,8 @@ void Simulator::VisitSVELoadVectorRegister(const Instruction* instr) {
       uint64_t base = ReadXRegister(instr->GetRn(), Reg31IsStackPointer);
       uint64_t address = base + multiplier * vl;
       for (int i = 0; i < vl; i++) {
-        zt.Insert(i, MemRead<uint8_t>(address + i));
+        VIXL_DEFINE_OR_RETURN(value, MemRead<uint8_t>(address + i));
+        zt.Insert(i, value);
       }
       LogZRead(instr->GetRt(), address);
       break;
@@ -12466,7 +12890,7 @@ void Simulator::VisitSVELoadAndBroadcastQOWord_ScalarPlusImm(
   VectorFormat vform = SVEFormatFromLaneSizeInBytesLog2(msz);
 
   for (unsigned i = 0; i < dwords; i++) {
-    ld1(kFormatVnD, zt, i, addr + offset + (i * kDRegSizeInBytes));
+    if (!ld1(kFormatVnD, zt, i, addr + offset + (i * kDRegSizeInBytes))) return;
   }
   mov_zeroing(vform, zt, pg, zt);
   dup_element(vform_dst, zt, zt, 0);
@@ -12493,7 +12917,7 @@ void Simulator::VisitSVELoadAndBroadcastQOWord_ScalarPlusScalar(
   VectorFormat vform = SVEFormatFromLaneSizeInBytesLog2(msz);
   offset <<= msz;
   for (unsigned i = 0; i < bytes; i++) {
-    ld1(kFormatVnB, zt, i, addr + offset + i);
+    if (!ld1(kFormatVnB, zt, i, addr + offset + i)) return;
   }
   mov_zeroing(vform, zt, pg, zt);
   dup_element(vform_dst, zt, zt, 0);
@@ -13014,7 +13438,7 @@ void Simulator::VisitSVEStorePredicateRegister(const Instruction* instr) {
       uint64_t base = ReadXRegister(instr->GetRn(), Reg31IsStackPointer);
       uint64_t address = base + multiplier * pl;
       for (int i = 0; i < pl; i++) {
-        MemWrite(address + i, pt.GetLane<uint8_t>(i));
+        if (!MemWrite(address + i, pt.GetLane<uint8_t>(i))) return;
       }
       LogPWrite(instr->GetPt(), address);
       break;
@@ -13035,7 +13459,7 @@ void Simulator::VisitSVEStoreVectorRegister(const Instruction* instr) {
       uint64_t base = ReadXRegister(instr->GetRn(), Reg31IsStackPointer);
       uint64_t address = base + multiplier * vl;
       for (int i = 0; i < vl; i++) {
-        MemWrite(address + i, zt.GetLane<uint8_t>(i));
+        if (!MemWrite(address + i, zt.GetLane<uint8_t>(i))) return;
       }
       LogZWrite(instr->GetRt(), address);
       break;
@@ -14167,8 +14591,8 @@ void Simulator::SimulateMTEStoreTagPair(const Instruction* instr) {
   int tag = GetAllocationTagFromAddress(rn);
   meta_data_.SetMTETag(address, tag);
 
-  MemWrite<uint64_t>(address, rt);
-  MemWrite<uint64_t>(address + kXRegSizeInBytes, rt2);
+  if (!MemWrite<uint64_t>(address, rt)) return;
+  if (!MemWrite<uint64_t>(address + kXRegSizeInBytes, rt2)) return;
 }
 
 void Simulator::SimulateMTEStoreTag(const Instruction* instr) {
@@ -14244,7 +14668,7 @@ void Simulator::SimulateMTEStoreTag(const Instruction* instr) {
 
     size_t fill_offset = 0;
     while (fill_offset < fill_size) {
-      MemWrite<uint64_t>(address + fill_offset, 0);
+      if (!MemWrite<uint64_t>(address + fill_offset, 0)) return;
       fill_offset += sizeof(uint64_t);
     }
   }
@@ -14328,8 +14752,8 @@ void Simulator::SimulateCpyM(const Instruction* instr) {
   }
 
   while (xn--) {
-    uint8_t temp = MemRead<uint8_t>(xs);
-    MemWrite<uint8_t>(xd, temp);
+    VIXL_DEFINE_OR_RETURN(temp, MemRead<uint8_t>(xs));
+    if (!MemWrite<uint8_t>(xd, temp)) return;
     LogMemTransfer(xd, xs, temp);
     xs += step;
     xd += step;
@@ -14368,7 +14792,7 @@ void Simulator::SimulateSetM(const Instruction* instr) {
 
   while (xn--) {
     LogWrite(instr->GetRs(), GetPrintRegPartial(kPrintRegLaneSizeB), xd);
-    MemWrite<uint8_t>(xd++, xs);
+    if (!MemWrite<uint8_t>(xd++, xs)) return;
   }
   WriteXRegister(instr->GetRd(), xd);
   WriteXRegister(instr->GetRn(), 0);
@@ -14580,22 +15004,45 @@ void Simulator::DoRuntimeCall(const Instruction* instr) {
   VIXL_STATIC_ASSERT(kRuntimeCallAddressSize == sizeof(uintptr_t));
   // The appropriate `Simulator::SimulateRuntimeCall()` wrapper and the function
   // to call are passed inlined in the assembly.
-  uintptr_t call_wrapper_address =
-      MemRead<uintptr_t>(instr + kRuntimeCallWrapperOffset);
-  uintptr_t function_address =
-      MemRead<uintptr_t>(instr + kRuntimeCallFunctionOffset);
-  RuntimeCallType call_type = static_cast<RuntimeCallType>(
-      MemRead<uint32_t>(instr + kRuntimeCallTypeOffset));
+  VIXL_DEFINE_OR_RETURN(call_wrapper_address,
+                        MemRead<uintptr_t>(instr + kRuntimeCallWrapperOffset));
+  VIXL_DEFINE_OR_RETURN(function_address,
+                        MemRead<uintptr_t>(instr + kRuntimeCallFunctionOffset));
+  VIXL_DEFINE_OR_RETURN(call_type,
+                        MemRead<uint32_t>(instr + kRuntimeCallTypeOffset));
   auto runtime_call_wrapper =
       reinterpret_cast<void (*)(Simulator*, uintptr_t)>(call_wrapper_address);
 
-  if (call_type == kCallRuntime) {
-    WriteRegister(kLinkRegCode,
-                  instr->GetInstructionAtOffset(kRuntimeCallLength));
+  if (static_cast<RuntimeCallType>(call_type) == kCallRuntime) {
+    const Instruction* addr = instr->GetInstructionAtOffset(kRuntimeCallLength);
+    WriteLr(addr);
+    GCSPush(reinterpret_cast<uint64_t>(addr));
   }
   runtime_call_wrapper(this, function_address);
   // Read the return address from `lr` and write it into `pc`.
-  WritePc(ReadRegister<Instruction*>(kLinkRegCode));
+  uint64_t addr = ReadRegister<uint64_t>(kLinkRegCode);
+  if (IsGCSCheckEnabled()) {
+    uint64_t expected_lr = GCSPeek();
+    char msg[128];
+    if (expected_lr != 0) {
+      if ((expected_lr & 0x3) != 0) {
+        snprintf(msg,
+                 sizeof(msg),
+                 "GCS contains misaligned return address: 0x%016lx\n",
+                 expected_lr);
+        ReportGCSFailure(msg);
+      } else if ((addr != 0) && (addr != expected_lr)) {
+        snprintf(msg,
+                 sizeof(msg),
+                 "GCS mismatch: lr = 0x%016lx, gcs = 0x%016lx\n",
+                 addr,
+                 expected_lr);
+        ReportGCSFailure(msg);
+      }
+      GCSPop();
+    }
+  }
+  WritePc(reinterpret_cast<Instruction*>(addr));
 }
 #else
 void Simulator::DoRuntimeCall(const Instruction* instr) {
@@ -14620,7 +15067,7 @@ void Simulator::DoConfigureCPUFeatures(const Instruction* instr) {
   // Read the kNone-terminated list of features.
   CPUFeatures parameters;
   while (true) {
-    ElementType feature = MemRead<ElementType>(instr + offset);
+    VIXL_DEFINE_OR_RETURN(feature, MemRead<ElementType>(instr + offset));
     offset += element_size;
     if (feature == static_cast<ElementType>(CPUFeatures::kNone)) break;
     parameters.Combine(static_cast<CPUFeatures::Feature>(feature));

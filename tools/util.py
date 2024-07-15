@@ -37,8 +37,8 @@ import sys
 
 
 def ListCCFilesWithoutExt(path):
-  return map(lambda x : os.path.splitext(os.path.basename(x))[0],
-             glob.glob(os.path.join(path, '*.cc')))
+  src_files = glob.glob(os.path.join(path, '*.cc'))
+  return [os.path.splitext(os.path.basename(x))[0] for x in src_files]
 
 
 def abort(message):
@@ -46,14 +46,8 @@ def abort(message):
   sys.exit(1)
 
 
-# Emulate python3 subprocess.getstatusoutput.
 def getstatusoutput(command):
-  try:
-    args = shlex.split(command)
-    output = subprocess.check_output(args, stderr=subprocess.STDOUT)
-    return 0, output.rstrip('\n')
-  except subprocess.CalledProcessError as e:
-    return e.returncode, e.output.rstrip('\n')
+  return subprocess.getstatusoutput(command)
 
 
 def IsCommandAvailable(command):
@@ -95,7 +89,7 @@ def GetCompilerDirectives(env):
     match.group(1): match.group(2)
     for match in [
       # Capture macro name.
-      re.search('^#define (\S+?) (.+)$', macro)
+      re.search(r'^#define (\S+?) (.+)$', macro)
       for macro in out.split('\n')
     ]
     # Filter out non-matches.
@@ -189,7 +183,7 @@ class CompilerInformation(object):
   # "{compiler}-{major}.{minor}". The comparison is done using the provided
   # `operator` argument.
   def CompareVersion(self, operator, description):
-    match = re.search('^(\S+)-(.*?)$', description)
+    match = re.search(r'^(\S+)-(.*?)$', description)
     if not match:
       raise Exception("A version number is required when comparing compilers")
     compiler, version = match.group(1), match.group(2)

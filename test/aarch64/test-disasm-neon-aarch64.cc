@@ -1792,6 +1792,34 @@ TEST(neon_3same) {
   COMPARE_MACRO(Pmul(v6.V16B(), v7.V16B(), v8.V16B()),
                 "pmul v6.16b, v7.16b, v8.16b");
 
+  // Check unallocated vector types for SDOT.
+  COMPARE(dci(0x0e009400), "unallocated (Unallocated)");  // 8B
+  COMPARE(dci(0x4e009400), "unallocated (Unallocated)");  // 16B
+  COMPARE(dci(0x0e409400), "unallocated (Unallocated)");  // 4H
+  COMPARE(dci(0x4e409400), "unallocated (Unallocated)");  // 8H
+  COMPARE(dci(0x0ec09400), "unallocated (Unallocated)");  // 1D
+  COMPARE(dci(0x4ec09400), "unallocated (Unallocated)");  // 2D
+
+  // Check unallocated vector types for UDOT.
+  COMPARE(dci(0x2e009400), "unallocated (Unallocated)");  // 8B
+  COMPARE(dci(0x6e009400), "unallocated (Unallocated)");  // 16B
+  COMPARE(dci(0x2e409400), "unallocated (Unallocated)");  // 4H
+  COMPARE(dci(0x6e409400), "unallocated (Unallocated)");  // 8H
+  COMPARE(dci(0x2ec09400), "unallocated (Unallocated)");  // 1D
+  COMPARE(dci(0x6ec09400), "unallocated (Unallocated)");  // 2D
+
+  // Check unallocated vector types for SQRDMLAH.
+  COMPARE(dci(0x2e008400), "unallocated (Unallocated)");  // 8B
+  COMPARE(dci(0x6e008400), "unallocated (Unallocated)");  // 16B
+  COMPARE(dci(0x2ec08400), "unallocated (Unallocated)");  // 1D
+  COMPARE(dci(0x6ec08400), "unallocated (Unallocated)");  // 2D
+
+  // Check unallocated vector types for SQRDMLSH.
+  COMPARE(dci(0x2e008c00), "unallocated (Unallocated)");  // 8B
+  COMPARE(dci(0x6e008c00), "unallocated (Unallocated)");  // 16B
+  COMPARE(dci(0x2ec08c00), "unallocated (Unallocated)");  // 1D
+  COMPARE(dci(0x6ec08c00), "unallocated (Unallocated)");  // 2D
+
   CLEANUP();
 }
 
@@ -1923,6 +1951,16 @@ TEST(neon_3same_extra_fcadd) {
   // FC* instructions.
   COMPARE(dci(0x2e00ec00), "unallocated (Unallocated)");  // opcode = 0x1101
   COMPARE(dci(0x2e00fc00), "unallocated (Unallocated)");  // opcode = 0x1111
+
+  // Check unallocated vector types for FCADD.
+  COMPARE(dci(0x2e00e400), "unallocated (Unallocated)");  // 8B
+  COMPARE(dci(0x6e00e400), "unallocated (Unallocated)");  // 16B
+  COMPARE(dci(0x2ec0e400), "unallocated (Unallocated)");  // 1D
+
+  // Check unallocated vector types for FCMLA.
+  COMPARE(dci(0x2e00c400), "unallocated (Unallocated)");  // 8B
+  COMPARE(dci(0x6e00c400), "unallocated (Unallocated)");  // 16B
+  COMPARE(dci(0x2ec0c400), "unallocated (Unallocated)");  // 1D
 
   CLEANUP();
 }
@@ -2594,6 +2632,13 @@ TEST(neon_fp_byelement) {
   COMPARE_MACRO(Fcmla(v0.V8H(), v1.V8H(), v31.H(), 3, 0),
                 "fcmla v0.8h, v1.8h, v31.h[3], #0");
 
+  // Check unallocated vector types for FCMLA.
+  COMPARE(dci(0x2f001000), "unallocated (Unallocated)");  // 8B
+  COMPARE(dci(0x6f001000), "unallocated (Unallocated)");  // 16B
+  COMPARE(dci(0x2f801000), "unallocated (Unallocated)");  // 2S
+  COMPARE(dci(0x2fc01000), "unallocated (Unallocated)");  // 1D
+  COMPARE(dci(0x6fc01000), "unallocated (Unallocated)");  // 2D
+
   CLEANUP();
 }
 
@@ -2904,6 +2949,10 @@ TEST(neon_3different) {
                 "pmull v0.8h, v1.8b, v2.8b");
   COMPARE_MACRO(Pmull2(v2.V8H(), v3.V16B(), v4.V16B()),
                 "pmull2 v2.8h, v3.16b, v4.16b");
+  COMPARE_MACRO(Pmull(v5.V1Q(), v6.V1D(), v7.V1D()),
+                "pmull v5.1q, v6.1d, v7.1d");
+  COMPARE_MACRO(Pmull2(v8.V1Q(), v9.V2D(), v10.V2D()),
+                "pmull2 v8.1q, v9.2d, v10.2d");
 
   CLEANUP();
 }
@@ -4467,6 +4516,58 @@ TEST(neon_matmul) {
   CLEANUP();
 }
 
+TEST(neon_sha3) {
+  SETUP();
+
+  COMPARE_MACRO(Bcax(v0.V16B(), v1.V16B(), v2.V16B(), v3.V16B()),
+                "bcax v0.16b, v1.16b, v2.16b, v3.16b");
+  COMPARE_MACRO(Eor3(v10.V16B(), v11.V16B(), v12.V16B(), v13.V16B()),
+                "eor3 v10.16b, v11.16b, v12.16b, v13.16b");
+  COMPARE_MACRO(Xar(v20.V2D(), v21.V2D(), v22.V2D(), 42),
+                "xar v20.2d, v21.2d, v22.2d, #42");
+  COMPARE_MACRO(Rax1(v0.V2D(), v1.V2D(), v2.V2D()), "rax1 v0.2d, v1.2d, v2.2d");
+
+  CLEANUP();
+}
+
+TEST(neon_sha1) {
+  SETUP();
+
+  COMPARE_MACRO(Sha1c(q0, s12, v20.V4S()), "sha1c q0, s12, v20.4s");
+  COMPARE_MACRO(Sha1m(q22, s2, v13.V4S()), "sha1m q22, s2, v13.4s");
+  COMPARE_MACRO(Sha1p(q31, s5, v15.V4S()), "sha1p q31, s5, v15.4s");
+  COMPARE_MACRO(Sha1su0(v19.V4S(), v9.V4S(), v27.V4S()),
+                "sha1su0 v19.4s, v9.4s, v27.4s");
+  COMPARE_MACRO(Sha1h(s12, s0), "sha1h s12, s0");
+  COMPARE_MACRO(Sha1su1(v2.V4S(), v4.V4S()), "sha1su1 v2.4s, v4.4s");
+
+  CLEANUP();
+}
+
+TEST(neon_sha2) {
+  SETUP();
+
+  COMPARE_MACRO(Sha256h(q0, q12, v20.V4S()), "sha256h q0, q12, v20.4s");
+  COMPARE_MACRO(Sha256h2(q22, q2, v13.V4S()), "sha256h2 q22, q2, v13.4s");
+  COMPARE_MACRO(Sha256su0(v2.V4S(), v4.V4S()), "sha256su0 v2.4s, v4.4s");
+  COMPARE_MACRO(Sha256su1(v19.V4S(), v9.V4S(), v27.V4S()),
+                "sha256su1 v19.4s, v9.4s, v27.4s");
+
+  CLEANUP();
+}
+
+TEST(neon_sha512) {
+  SETUP();
+
+  COMPARE_MACRO(Sha512h(q0, q12, v20.V2D()), "sha512h q0, q12, v20.2d");
+  COMPARE_MACRO(Sha512h2(q22, q2, v13.V2D()), "sha512h2 q22, q2, v13.2d");
+  COMPARE_MACRO(Sha512su0(v2.V2D(), v4.V2D()), "sha512su0 v2.2d, v4.2d");
+  COMPARE_MACRO(Sha512su1(v19.V2D(), v9.V2D(), v27.V2D()),
+                "sha512su1 v19.2d, v9.2d, v27.2d");
+
+  CLEANUP();
+}
+
 TEST(neon_unallocated_regression_test) {
   SETUP();
 
@@ -4562,8 +4663,6 @@ TEST(neon_unallocated_regression_test) {
   COMPARE_PREFIX(dci(0x2efb9dbd), "unallocated");  // pmul v.und, v.und, v.und
   COMPARE_PREFIX(dci(0x4eace101), "unallocated");  // pmull v.d, v.s, v.s
   COMPARE_PREFIX(dci(0x0e6de3ad), "unallocated");  // pmull v.s, v.h, v.h
-  COMPARE_PREFIX(dci(0x4ee3e2c0), "unallocated");  // pmull v.und, v.d, v.d
-  COMPARE_PREFIX(dci(0x0eede060), "unallocated");  // pmull v.und, v.und, v.und
   COMPARE_PREFIX(dci(0x6ee00afd), "unallocated");  // rev v.d, v.d
   COMPARE_PREFIX(dci(0x4e601975), "unallocated");  // rev v.h, v.h
   COMPARE_PREFIX(dci(0x4ea019f3), "unallocated");  // rev v.s, v.s

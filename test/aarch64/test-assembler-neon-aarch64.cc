@@ -24,22 +24,21 @@
 // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
-#include <sys/mman.h>
-
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <sys/mman.h>
 
 #include "test-runner.h"
 #include "test-utils.h"
-#include "aarch64/test-utils-aarch64.h"
 
 #include "aarch64/cpu-aarch64.h"
 #include "aarch64/disasm-aarch64.h"
 #include "aarch64/macro-assembler-aarch64.h"
 #include "aarch64/simulator-aarch64.h"
+#include "aarch64/test-utils-aarch64.h"
 #include "test-assembler-aarch64.h"
 
 namespace vixl {
@@ -10973,6 +10972,24 @@ TEST(neon_usdot_element) {
     ASSERT_EQUAL_128(-1, -1, q11);
     ASSERT_EQUAL_128(-1, -1, q13);
     ASSERT_EQUAL_128(-1, -1, q15);
+  }
+}
+
+TEST(neon_pmull_regression_test) {
+  SETUP_WITH_FEATURES(CPUFeatures::kNEON);
+
+  START();
+  __ Movi(v0.V2D(), 0xdecafc0ffee);
+  __ Pmull(v0.V8H(), v0.V8B(), v0.V8B());
+
+  __ Movi(v1.V2D(), 0xaaaaaaaa55555555);
+  __ Pmull2(v1.V8H(), v1.V16B(), v1.V16B());
+  END();
+
+  if (CAN_RUN()) {
+    RUN();
+    ASSERT_EQUAL_128(0x0000000000515450, 0x4455500055555454, q0);
+    ASSERT_EQUAL_128(0x4444444444444444, 0x1111111111111111, q1);
   }
 }
 

@@ -32,6 +32,7 @@
 #include <unordered_map>
 
 #include "cpu-features.h"
+
 #include "decoder-aarch64.h"
 #include "decoder-visitor-map-aarch64.h"
 
@@ -126,6 +127,7 @@ class CPUFeaturesAuditor : public DecoderVisitor {
       uint32_t,
       std::function<void(CPUFeaturesAuditor*, const Instruction*)>>;
   static const FormToVisitorFnMap* GetFormToVisitorFnMap();
+  uint32_t form_hash_;
 };
 
 }  // namespace aarch64

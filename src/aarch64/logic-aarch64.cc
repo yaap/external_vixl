@@ -182,24 +182,28 @@ uint64_t Simulator::GenerateRandomTag(uint16_t exclude) {
 }
 
 
-void Simulator::ld1(VectorFormat vform, LogicVRegister dst, uint64_t addr) {
+bool Simulator::ld1(VectorFormat vform, LogicVRegister dst, uint64_t addr) {
   dst.ClearForWrite(vform);
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
-    LoadLane(dst, vform, i, addr);
+    if (!LoadLane(dst, vform, i, addr)) {
+      return false;
+    }
     addr += LaneSizeInBytesFromFormat(vform);
   }
+  return true;
 }
 
 
-void Simulator::ld1(VectorFormat vform,
+bool Simulator::ld1(VectorFormat vform,
                     LogicVRegister dst,
                     int index,
                     uint64_t addr) {
-  LoadLane(dst, vform, index, addr);
+  dst.ClearForWrite(vform);
+  return LoadLane(dst, vform, index, addr);
 }
 
 
-void Simulator::ld1r(VectorFormat vform,
+bool Simulator::ld1r(VectorFormat vform,
                      VectorFormat unpack_vform,
                      LogicVRegister dst,
                      uint64_t addr,
@@ -208,20 +212,25 @@ void Simulator::ld1r(VectorFormat vform,
   dst.ClearForWrite(vform);
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
     if (is_signed) {
-      LoadIntToLane(dst, vform, unpack_size, i, addr);
+      if (!LoadIntToLane(dst, vform, unpack_size, i, addr)) {
+        return false;
+      }
     } else {
-      LoadUintToLane(dst, vform, unpack_size, i, addr);
+      if (!LoadUintToLane(dst, vform, unpack_size, i, addr)) {
+        return false;
+      }
     }
   }
+  return true;
 }
 
 
-void Simulator::ld1r(VectorFormat vform, LogicVRegister dst, uint64_t addr) {
-  ld1r(vform, vform, dst, addr);
+bool Simulator::ld1r(VectorFormat vform, LogicVRegister dst, uint64_t addr) {
+  return ld1r(vform, vform, dst, addr);
 }
 
 
-void Simulator::ld2(VectorFormat vform,
+bool Simulator::ld2(VectorFormat vform,
                     LogicVRegister dst1,
                     LogicVRegister dst2,
                     uint64_t addr1) {
@@ -230,15 +239,17 @@ void Simulator::ld2(VectorFormat vform,
   int esize = LaneSizeInBytesFromFormat(vform);
   uint64_t addr2 = addr1 + esize;
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
-    LoadLane(dst1, vform, i, addr1);
-    LoadLane(dst2, vform, i, addr2);
+    if (!LoadLane(dst1, vform, i, addr1) || !LoadLane(dst2, vform, i, addr2)) {
+      return false;
+    }
     addr1 += 2 * esize;
     addr2 += 2 * esize;
   }
+  return true;
 }
 
 
-void Simulator::ld2(VectorFormat vform,
+bool Simulator::ld2(VectorFormat vform,
                     LogicVRegister dst1,
                     LogicVRegister dst2,
                     int index,
@@ -246,12 +257,12 @@ void Simulator::ld2(VectorFormat vform,
   dst1.ClearForWrite(vform);
   dst2.ClearForWrite(vform);
   uint64_t addr2 = addr1 + LaneSizeInBytesFromFormat(vform);
-  LoadLane(dst1, vform, index, addr1);
-  LoadLane(dst2, vform, index, addr2);
+  return (LoadLane(dst1, vform, index, addr1) &&
+          LoadLane(dst2, vform, index, addr2));
 }
 
 
-void Simulator::ld2r(VectorFormat vform,
+bool Simulator::ld2r(VectorFormat vform,
                      LogicVRegister dst1,
                      LogicVRegister dst2,
                      uint64_t addr) {
@@ -259,13 +270,15 @@ void Simulator::ld2r(VectorFormat vform,
   dst2.ClearForWrite(vform);
   uint64_t addr2 = addr + LaneSizeInBytesFromFormat(vform);
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
-    LoadLane(dst1, vform, i, addr);
-    LoadLane(dst2, vform, i, addr2);
+    if (!LoadLane(dst1, vform, i, addr) || !LoadLane(dst2, vform, i, addr2)) {
+      return false;
+    }
   }
+  return true;
 }
 
 
-void Simulator::ld3(VectorFormat vform,
+bool Simulator::ld3(VectorFormat vform,
                     LogicVRegister dst1,
                     LogicVRegister dst2,
                     LogicVRegister dst3,
@@ -277,17 +290,19 @@ void Simulator::ld3(VectorFormat vform,
   uint64_t addr2 = addr1 + esize;
   uint64_t addr3 = addr2 + esize;
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
-    LoadLane(dst1, vform, i, addr1);
-    LoadLane(dst2, vform, i, addr2);
-    LoadLane(dst3, vform, i, addr3);
+    if (!LoadLane(dst1, vform, i, addr1) || !LoadLane(dst2, vform, i, addr2) ||
+        !LoadLane(dst3, vform, i, addr3)) {
+      return false;
+    }
     addr1 += 3 * esize;
     addr2 += 3 * esize;
     addr3 += 3 * esize;
   }
+  return true;
 }
 
 
-void Simulator::ld3(VectorFormat vform,
+bool Simulator::ld3(VectorFormat vform,
                     LogicVRegister dst1,
                     LogicVRegister dst2,
                     LogicVRegister dst3,
@@ -298,13 +313,13 @@ void Simulator::ld3(VectorFormat vform,
   dst3.ClearForWrite(vform);
   uint64_t addr2 = addr1 + LaneSizeInBytesFromFormat(vform);
   uint64_t addr3 = addr2 + LaneSizeInBytesFromFormat(vform);
-  LoadLane(dst1, vform, index, addr1);
-  LoadLane(dst2, vform, index, addr2);
-  LoadLane(dst3, vform, index, addr3);
+  return (LoadLane(dst1, vform, index, addr1) &&
+          LoadLane(dst2, vform, index, addr2) &&
+          LoadLane(dst3, vform, index, addr3));
 }
 
 
-void Simulator::ld3r(VectorFormat vform,
+bool Simulator::ld3r(VectorFormat vform,
                      LogicVRegister dst1,
                      LogicVRegister dst2,
                      LogicVRegister dst3,
@@ -315,14 +330,16 @@ void Simulator::ld3r(VectorFormat vform,
   uint64_t addr2 = addr + LaneSizeInBytesFromFormat(vform);
   uint64_t addr3 = addr2 + LaneSizeInBytesFromFormat(vform);
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
-    LoadLane(dst1, vform, i, addr);
-    LoadLane(dst2, vform, i, addr2);
-    LoadLane(dst3, vform, i, addr3);
+    if (!LoadLane(dst1, vform, i, addr) || !LoadLane(dst2, vform, i, addr2) ||
+        !LoadLane(dst3, vform, i, addr3)) {
+      return false;
+    }
   }
+  return true;
 }
 
 
-void Simulator::ld4(VectorFormat vform,
+bool Simulator::ld4(VectorFormat vform,
                     LogicVRegister dst1,
                     LogicVRegister dst2,
                     LogicVRegister dst3,
@@ -337,19 +354,20 @@ void Simulator::ld4(VectorFormat vform,
   uint64_t addr3 = addr2 + esize;
   uint64_t addr4 = addr3 + esize;
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
-    LoadLane(dst1, vform, i, addr1);
-    LoadLane(dst2, vform, i, addr2);
-    LoadLane(dst3, vform, i, addr3);
-    LoadLane(dst4, vform, i, addr4);
+    if (!LoadLane(dst1, vform, i, addr1) || !LoadLane(dst2, vform, i, addr2) ||
+        !LoadLane(dst3, vform, i, addr3) || !LoadLane(dst4, vform, i, addr4)) {
+      return false;
+    }
     addr1 += 4 * esize;
     addr2 += 4 * esize;
     addr3 += 4 * esize;
     addr4 += 4 * esize;
   }
+  return true;
 }
 
 
-void Simulator::ld4(VectorFormat vform,
+bool Simulator::ld4(VectorFormat vform,
                     LogicVRegister dst1,
                     LogicVRegister dst2,
                     LogicVRegister dst3,
@@ -363,14 +381,14 @@ void Simulator::ld4(VectorFormat vform,
   uint64_t addr2 = addr1 + LaneSizeInBytesFromFormat(vform);
   uint64_t addr3 = addr2 + LaneSizeInBytesFromFormat(vform);
   uint64_t addr4 = addr3 + LaneSizeInBytesFromFormat(vform);
-  LoadLane(dst1, vform, index, addr1);
-  LoadLane(dst2, vform, index, addr2);
-  LoadLane(dst3, vform, index, addr3);
-  LoadLane(dst4, vform, index, addr4);
+  return (LoadLane(dst1, vform, index, addr1) &&
+          LoadLane(dst2, vform, index, addr2) &&
+          LoadLane(dst3, vform, index, addr3) &&
+          LoadLane(dst4, vform, index, addr4));
 }
 
 
-void Simulator::ld4r(VectorFormat vform,
+bool Simulator::ld4r(VectorFormat vform,
                      LogicVRegister dst1,
                      LogicVRegister dst2,
                      LogicVRegister dst3,
@@ -384,57 +402,61 @@ void Simulator::ld4r(VectorFormat vform,
   uint64_t addr3 = addr2 + LaneSizeInBytesFromFormat(vform);
   uint64_t addr4 = addr3 + LaneSizeInBytesFromFormat(vform);
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
-    LoadLane(dst1, vform, i, addr);
-    LoadLane(dst2, vform, i, addr2);
-    LoadLane(dst3, vform, i, addr3);
-    LoadLane(dst4, vform, i, addr4);
+    if (!LoadLane(dst1, vform, i, addr) || !LoadLane(dst2, vform, i, addr2) ||
+        !LoadLane(dst3, vform, i, addr3) || !LoadLane(dst4, vform, i, addr4)) {
+      return false;
+    }
   }
+  return true;
 }
 
 
-void Simulator::st1(VectorFormat vform, LogicVRegister src, uint64_t addr) {
+bool Simulator::st1(VectorFormat vform, LogicVRegister src, uint64_t addr) {
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
-    StoreLane(src, vform, i, addr);
+    if (!StoreLane(src, vform, i, addr)) return false;
     addr += LaneSizeInBytesFromFormat(vform);
   }
+  return true;
 }
 
 
-void Simulator::st1(VectorFormat vform,
+bool Simulator::st1(VectorFormat vform,
                     LogicVRegister src,
                     int index,
                     uint64_t addr) {
-  StoreLane(src, vform, index, addr);
+  return StoreLane(src, vform, index, addr);
 }
 
 
-void Simulator::st2(VectorFormat vform,
+bool Simulator::st2(VectorFormat vform,
                     LogicVRegister src,
                     LogicVRegister src2,
                     uint64_t addr) {
   int esize = LaneSizeInBytesFromFormat(vform);
   uint64_t addr2 = addr + esize;
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
-    StoreLane(src, vform, i, addr);
-    StoreLane(src2, vform, i, addr2);
+    if (!StoreLane(src, vform, i, addr) || !StoreLane(src2, vform, i, addr2)) {
+      return false;
+    }
     addr += 2 * esize;
     addr2 += 2 * esize;
   }
+  return true;
 }
 
 
-void Simulator::st2(VectorFormat vform,
+bool Simulator::st2(VectorFormat vform,
                     LogicVRegister src,
                     LogicVRegister src2,
                     int index,
                     uint64_t addr) {
   int esize = LaneSizeInBytesFromFormat(vform);
-  StoreLane(src, vform, index, addr);
-  StoreLane(src2, vform, index, addr + 1 * esize);
+  return (StoreLane(src, vform, index, addr) &&
+          StoreLane(src2, vform, index, addr + 1 * esize));
 }
 
 
-void Simulator::st3(VectorFormat vform,
+bool Simulator::st3(VectorFormat vform,
                     LogicVRegister src,
                     LogicVRegister src2,
                     LogicVRegister src3,
@@ -443,30 +465,32 @@ void Simulator::st3(VectorFormat vform,
   uint64_t addr2 = addr + esize;
   uint64_t addr3 = addr2 + esize;
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
-    StoreLane(src, vform, i, addr);
-    StoreLane(src2, vform, i, addr2);
-    StoreLane(src3, vform, i, addr3);
+    if (!StoreLane(src, vform, i, addr) || !StoreLane(src2, vform, i, addr2) ||
+        !StoreLane(src3, vform, i, addr3)) {
+      return false;
+    }
     addr += 3 * esize;
     addr2 += 3 * esize;
     addr3 += 3 * esize;
   }
+  return true;
 }
 
 
-void Simulator::st3(VectorFormat vform,
+bool Simulator::st3(VectorFormat vform,
                     LogicVRegister src,
                     LogicVRegister src2,
                     LogicVRegister src3,
                     int index,
                     uint64_t addr) {
   int esize = LaneSizeInBytesFromFormat(vform);
-  StoreLane(src, vform, index, addr);
-  StoreLane(src2, vform, index, addr + 1 * esize);
-  StoreLane(src3, vform, index, addr + 2 * esize);
+  return (StoreLane(src, vform, index, addr) &&
+          StoreLane(src2, vform, index, addr + 1 * esize) &&
+          StoreLane(src3, vform, index, addr + 2 * esize));
 }
 
 
-void Simulator::st4(VectorFormat vform,
+bool Simulator::st4(VectorFormat vform,
                     LogicVRegister src,
                     LogicVRegister src2,
                     LogicVRegister src3,
@@ -477,19 +501,21 @@ void Simulator::st4(VectorFormat vform,
   uint64_t addr3 = addr2 + esize;
   uint64_t addr4 = addr3 + esize;
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
-    StoreLane(src, vform, i, addr);
-    StoreLane(src2, vform, i, addr2);
-    StoreLane(src3, vform, i, addr3);
-    StoreLane(src4, vform, i, addr4);
+    if (!StoreLane(src, vform, i, addr) || !StoreLane(src2, vform, i, addr2) ||
+        !StoreLane(src3, vform, i, addr3) ||
+        !StoreLane(src4, vform, i, addr4)) {
+      return false;
+    }
     addr += 4 * esize;
     addr2 += 4 * esize;
     addr3 += 4 * esize;
     addr4 += 4 * esize;
   }
+  return true;
 }
 
 
-void Simulator::st4(VectorFormat vform,
+bool Simulator::st4(VectorFormat vform,
                     LogicVRegister src,
                     LogicVRegister src2,
                     LogicVRegister src3,
@@ -497,10 +523,10 @@ void Simulator::st4(VectorFormat vform,
                     int index,
                     uint64_t addr) {
   int esize = LaneSizeInBytesFromFormat(vform);
-  StoreLane(src, vform, index, addr);
-  StoreLane(src2, vform, index, addr + 1 * esize);
-  StoreLane(src3, vform, index, addr + 2 * esize);
-  StoreLane(src4, vform, index, addr + 3 * esize);
+  return (StoreLane(src, vform, index, addr) &&
+          StoreLane(src2, vform, index, addr + 1 * esize) &&
+          StoreLane(src3, vform, index, addr + 2 * esize) &&
+          StoreLane(src4, vform, index, addr + 3 * esize));
 }
 
 
@@ -895,22 +921,11 @@ LogicVRegister Simulator::sqrdmlsh(VectorFormat vform,
   return sqrdmlsh(vform, dst, src1, dup_element(indexform, temp, src2, index));
 }
 
-
 uint64_t Simulator::PolynomialMult(uint64_t op1,
                                    uint64_t op2,
                                    int lane_size_in_bits) const {
-  VIXL_ASSERT(static_cast<unsigned>(lane_size_in_bits) <= kSRegSize);
-  VIXL_ASSERT(IsUintN(lane_size_in_bits, op1));
-  VIXL_ASSERT(IsUintN(lane_size_in_bits, op2));
-  uint64_t result = 0;
-  for (int i = 0; i < lane_size_in_bits; ++i) {
-    if ((op1 >> i) & 1) {
-      result = result ^ (op2 << i);
-    }
-  }
-  return result;
+  return PolynomialMult128(op1, op2, lane_size_in_bits).second;
 }
-
 
 LogicVRegister Simulator::pmul(VectorFormat vform,
                                LogicVRegister dst,
@@ -933,14 +948,16 @@ LogicVRegister Simulator::pmull(VectorFormat vform,
                                 const LogicVRegister& src1,
                                 const LogicVRegister& src2) {
   dst.ClearForWrite(vform);
-
   VectorFormat vform_src = VectorFormatHalfWidth(vform);
-  for (int i = 0; i < LaneCountFromFormat(vform); i++) {
+
+  // Process the elements in reverse to avoid problems when the destination
+  // register is the same as a source.
+  for (int i = LaneCountFromFormat(vform) - 1; i >= 0; i--) {
     dst.SetUint(vform,
                 i,
-                PolynomialMult(src1.Uint(vform_src, i),
-                               src2.Uint(vform_src, i),
-                               LaneSizeInBitsFromFormat(vform_src)));
+                PolynomialMult128(src1.Uint(vform_src, i),
+                                  src2.Uint(vform_src, i),
+                                  LaneSizeInBitsFromFormat(vform_src)));
   }
 
   return dst;
@@ -951,16 +968,18 @@ LogicVRegister Simulator::pmull2(VectorFormat vform,
                                  LogicVRegister dst,
                                  const LogicVRegister& src1,
                                  const LogicVRegister& src2) {
-  VectorFormat vform_src = VectorFormatHalfWidthDoubleLanes(vform);
   dst.ClearForWrite(vform);
+  VectorFormat vform_src = VectorFormatHalfWidthDoubleLanes(vform);
+
   int lane_count = LaneCountFromFormat(vform);
   for (int i = 0; i < lane_count; i++) {
     dst.SetUint(vform,
                 i,
-                PolynomialMult(src1.Uint(vform_src, lane_count + i),
-                               src2.Uint(vform_src, lane_count + i),
-                               LaneSizeInBitsFromFormat(vform_src)));
+                PolynomialMult128(src1.Uint(vform_src, lane_count + i),
+                                  src2.Uint(vform_src, lane_count + i),
+                                  LaneSizeInBitsFromFormat(vform_src)));
   }
+
   return dst;
 }
 
@@ -2257,7 +2276,10 @@ LogicVRegister Simulator::extractnarrow(VectorFormat dstform,
     }
   }
 
-  if (!upperhalf) {
+  if (upperhalf) {
+    // Clear any bits beyond a Q register.
+    dst.ClearForWrite(kFormat16B);
+  } else {
     dst.ClearForWrite(dstform);
   }
   return dst;
@@ -2491,12 +2513,21 @@ LogicVRegister Simulator::ror(VectorFormat vform,
                               LogicVRegister dst,
                               const LogicVRegister& src,
                               int rotation) {
+  dst.ClearForWrite(vform);
   int width = LaneSizeInBitsFromFormat(vform);
   for (int i = 0; i < LaneCountFromFormat(vform); i++) {
     uint64_t value = src.Uint(vform, i);
     dst.SetUint(vform, i, RotateRight(value, rotation, width));
   }
   return dst;
+}
+
+LogicVRegister Simulator::rol(VectorFormat vform,
+                              LogicVRegister dst,
+                              const LogicVRegister& src,
+                              int rotation) {
+  int ror_equivalent = LaneSizeInBitsFromFormat(vform) - rotation;
+  return ror(vform, dst, src, ror_equivalent);
 }
 
 LogicVRegister Simulator::ext(VectorFormat vform,
@@ -2707,7 +2738,7 @@ LogicVRegister Simulator::fcmla(VectorFormat vform,
                                 int index,
                                 int rot) {
   if (LaneSizeInBitsFromFormat(vform) == kHRegSize) {
-    VIXL_UNIMPLEMENTED();
+    fcmla<SimFloat16>(vform, dst, src1, src2, dst, index, rot);
   } else if (LaneSizeInBitsFromFormat(vform) == kSRegSize) {
     fcmla<float>(vform, dst, src1, src2, dst, index, rot);
   } else {
@@ -5963,6 +5994,7 @@ LogicVRegister Simulator::fcvtu(VectorFormat vform,
 LogicVRegister Simulator::fcvtl(VectorFormat vform,
                                 LogicVRegister dst,
                                 const LogicVRegister& src) {
+  dst.ClearForWrite(vform);
   if (LaneSizeInBitsFromFormat(vform) == kSRegSize) {
     for (int i = LaneCountFromFormat(vform) - 1; i >= 0; i--) {
       // TODO: Full support for SimFloat16 in SimRegister(s).
@@ -5983,6 +6015,7 @@ LogicVRegister Simulator::fcvtl(VectorFormat vform,
 LogicVRegister Simulator::fcvtl2(VectorFormat vform,
                                  LogicVRegister dst,
                                  const LogicVRegister& src) {
+  dst.ClearForWrite(vform);
   int lane_count = LaneCountFromFormat(vform);
   if (LaneSizeInBitsFromFormat(vform) == kSRegSize) {
     for (int i = 0; i < lane_count; i++) {
@@ -6028,6 +6061,7 @@ LogicVRegister Simulator::fcvtn(VectorFormat vform,
 LogicVRegister Simulator::fcvtn2(VectorFormat vform,
                                  LogicVRegister dst,
                                  const LogicVRegister& src) {
+  dst.ClearForWrite(vform);
   int lane_count = LaneCountFromFormat(vform) / 2;
   if (LaneSizeInBitsFromFormat(vform) == kHRegSize) {
     for (int i = lane_count - 1; i >= 0; i--) {
@@ -6071,6 +6105,7 @@ LogicVRegister Simulator::fcvtxn2(VectorFormat vform,
                                   LogicVRegister dst,
                                   const LogicVRegister& src) {
   VIXL_ASSERT(LaneSizeInBitsFromFormat(vform) == kSRegSize);
+  dst.ClearForWrite(vform);
   int lane_count = LaneCountFromFormat(vform) / 2;
   for (int i = lane_count - 1; i >= 0; i--) {
     dst.SetFloat(i + lane_count,
@@ -7271,7 +7306,9 @@ void Simulator::SVEStructuredStoreHelper(VectorFormat vform,
 
     for (int r = 0; r < reg_count; r++) {
       uint64_t element_address = addr.GetElementAddress(i, r);
-      StoreLane(zt[r], unpack_vform, i << unpack_shift, element_address);
+      if (!StoreLane(zt[r], unpack_vform, i << unpack_shift, element_address)) {
+        return;
+      }
     }
   }
 
@@ -7295,7 +7332,7 @@ void Simulator::SVEStructuredStoreHelper(VectorFormat vform,
   }
 }
 
-void Simulator::SVEStructuredLoadHelper(VectorFormat vform,
+bool Simulator::SVEStructuredLoadHelper(VectorFormat vform,
                                         const LogicPRegister& pg,
                                         unsigned zt_code,
                                         const LogicSVEAddressVector& addr,
@@ -7330,9 +7367,13 @@ void Simulator::SVEStructuredLoadHelper(VectorFormat vform,
       }
 
       if (is_signed) {
-        LoadIntToLane(zt[r], vform, msize_in_bytes, i, element_address);
+        if (!LoadIntToLane(zt[r], vform, msize_in_bytes, i, element_address)) {
+          return false;
+        }
       } else {
-        LoadUintToLane(zt[r], vform, msize_in_bytes, i, element_address);
+        if (!LoadUintToLane(zt[r], vform, msize_in_bytes, i, element_address)) {
+          return false;
+        }
       }
     }
   }
@@ -7351,6 +7392,7 @@ void Simulator::SVEStructuredLoadHelper(VectorFormat vform,
                        "<-",
                        addr);
   }
+  return true;
 }
 
 LogicPRegister Simulator::brka(LogicPRegister pd,
@@ -7458,7 +7500,9 @@ void Simulator::SVEFaultTolerantLoadHelper(VectorFormat vform,
         // First-faulting loads always load the first active element, regardless
         // of FFR. The result will be discarded if its FFR lane is inactive, but
         // it could still generate a fault.
-        value = MemReadUint(msize_in_bytes, element_address);
+        VIXL_DEFINE_OR_RETURN(mem_result,
+                              MemReadUint(msize_in_bytes, element_address));
+        value = mem_result;
         // All subsequent elements have non-fault semantics.
         type = kSVENonFaultLoad;
 
@@ -7470,7 +7514,9 @@ void Simulator::SVEFaultTolerantLoadHelper(VectorFormat vform,
         bool can_read = (i < fake_fault_at_lane) &&
                         CanReadMemory(element_address, msize_in_bytes);
         if (can_read) {
-          value = MemReadUint(msize_in_bytes, element_address);
+          VIXL_DEFINE_OR_RETURN(mem_result,
+                                MemReadUint(msize_in_bytes, element_address));
+          value = mem_result;
         } else {
           // Propagate the fault to the end of FFR.
           for (int j = i; j < LaneCountFromFormat(vform); j++) {
@@ -7846,6 +7892,183 @@ LogicVRegister Simulator::fmatmul(VectorFormat vform,
     fmatmul<double>(vform, dst, src1, src2);
   }
   return dst;
+}
+
+template <>
+uint64_t SHA1Operation<"choose"_h>(uint64_t x, uint64_t y, uint64_t z) {
+  return ((y ^ z) & x) ^ z;
+}
+
+template <>
+uint64_t SHA1Operation<"majority"_h>(uint64_t x, uint64_t y, uint64_t z) {
+  return (x & y) | ((x | y) & z);
+}
+
+template <>
+uint64_t SHA1Operation<"parity"_h>(uint64_t x, uint64_t y, uint64_t z) {
+  return x ^ y ^ z;
+}
+
+template <typename T, unsigned A, unsigned B, unsigned C>
+static uint64_t SHASigma(uint64_t x) {
+  return static_cast<T>(RotateRight(x, A, sizeof(T) * kBitsPerByte) ^
+                        RotateRight(x, B, sizeof(T) * kBitsPerByte) ^
+                        RotateRight(x, C, sizeof(T) * kBitsPerByte));
+}
+
+LogicVRegister Simulator::sha2h(LogicVRegister srcdst,
+                                const LogicVRegister& src1,
+                                const LogicVRegister& src2,
+                                bool part1) {
+  uint64_t x[4] = {};
+  uint64_t y[4] = {};
+  if (part1) {
+    // Switch input order based on which part is being handled.
+    srcdst.UintArray(kFormat4S, x);
+    src1.UintArray(kFormat4S, y);
+  } else {
+    src1.UintArray(kFormat4S, x);
+    srcdst.UintArray(kFormat4S, y);
+  }
+
+  for (unsigned i = 0; i < ArrayLength(x); i++) {
+    uint64_t chs = SHA1Operation<"choose"_h>(y[0], y[1], y[2]);
+    uint64_t maj = SHA1Operation<"majority"_h>(x[0], x[1], x[2]);
+
+    uint64_t w = src2.Uint(kFormat4S, i);
+    uint64_t t = y[3] + SHASigma<uint32_t, 6, 11, 25>(y[0]) + chs + w;
+
+    x[3] += t;
+    y[3] = t + SHASigma<uint32_t, 2, 13, 22>(x[0]) + maj;
+
+    // y:x = ROL(y:x, 32)
+    SHARotateEltsLeftOne(x);
+    SHARotateEltsLeftOne(y);
+    std::swap(x[0], y[0]);
+  }
+
+  srcdst.SetUintArray(kFormat4S, part1 ? x : y);
+  return srcdst;
+}
+
+template <typename T, unsigned A, unsigned B, unsigned C>
+static uint64_t SHASURotate(uint64_t x) {
+  return RotateRight(x, A, sizeof(T) * kBitsPerByte) ^
+         RotateRight(x, B, sizeof(T) * kBitsPerByte) ^
+         ((x & ~static_cast<T>(0)) >> C);
+}
+
+LogicVRegister Simulator::sha2su0(LogicVRegister srcdst,
+                                  const LogicVRegister& src1) {
+  uint64_t w[4] = {};
+  uint64_t result[4];
+  srcdst.UintArray(kFormat4S, w);
+  uint64_t x = src1.Uint(kFormat4S, 0);
+
+  result[0] = SHASURotate<uint32_t, 7, 18, 3>(w[1]) + w[0];
+  result[1] = SHASURotate<uint32_t, 7, 18, 3>(w[2]) + w[1];
+  result[2] = SHASURotate<uint32_t, 7, 18, 3>(w[3]) + w[2];
+  result[3] = SHASURotate<uint32_t, 7, 18, 3>(x) + w[3];
+
+  srcdst.SetUintArray(kFormat4S, result);
+  return srcdst;
+}
+
+LogicVRegister Simulator::sha2su1(LogicVRegister srcdst,
+                                  const LogicVRegister& src1,
+                                  const LogicVRegister& src2) {
+  uint64_t w[4] = {};
+  uint64_t x[4] = {};
+  uint64_t y[4] = {};
+  uint64_t result[4];
+  srcdst.UintArray(kFormat4S, w);
+  src1.UintArray(kFormat4S, x);
+  src2.UintArray(kFormat4S, y);
+
+  result[0] = SHASURotate<uint32_t, 17, 19, 10>(y[2]) + w[0] + x[1];
+  result[1] = SHASURotate<uint32_t, 17, 19, 10>(y[3]) + w[1] + x[2];
+  result[2] = SHASURotate<uint32_t, 17, 19, 10>(result[0]) + w[2] + x[3];
+  result[3] = SHASURotate<uint32_t, 17, 19, 10>(result[1]) + w[3] + y[0];
+
+  srcdst.SetUintArray(kFormat4S, result);
+  return srcdst;
+}
+
+LogicVRegister Simulator::sha512h(LogicVRegister srcdst,
+                                  const LogicVRegister& src1,
+                                  const LogicVRegister& src2) {
+  uint64_t w[2] = {};
+  uint64_t x[2] = {};
+  uint64_t y[2] = {};
+  uint64_t result[2] = {};
+  srcdst.UintArray(kFormat2D, w);
+  src1.UintArray(kFormat2D, x);
+  src2.UintArray(kFormat2D, y);
+
+  result[1] = (y[1] & x[0]) ^ (~y[1] & x[1]);
+  result[1] += SHASigma<uint64_t, 14, 18, 41>(y[1]) + w[1];
+
+  uint64_t tmp = result[1] + y[0];
+
+  result[0] = (tmp & y[1]) ^ (~tmp & x[0]);
+  result[0] += SHASigma<uint64_t, 14, 18, 41>(tmp) + w[0];
+
+  srcdst.SetUintArray(kFormat2D, result);
+  return srcdst;
+}
+
+LogicVRegister Simulator::sha512h2(LogicVRegister srcdst,
+                                   const LogicVRegister& src1,
+                                   const LogicVRegister& src2) {
+  uint64_t w[2] = {};
+  uint64_t x[2] = {};
+  uint64_t y[2] = {};
+  uint64_t result[2] = {};
+  srcdst.UintArray(kFormat2D, w);
+  src1.UintArray(kFormat2D, x);
+  src2.UintArray(kFormat2D, y);
+
+  result[1] = (x[0] & y[1]) ^ (x[0] & y[0]) ^ (y[1] & y[0]);
+  result[1] += SHASigma<uint64_t, 28, 34, 39>(y[0]) + w[1];
+
+  result[0] = (result[1] & y[0]) ^ (result[1] & y[1]) ^ (y[1] & y[0]);
+  result[0] += SHASigma<uint64_t, 28, 34, 39>(result[1]) + w[0];
+
+  srcdst.SetUintArray(kFormat2D, result);
+  return srcdst;
+}
+
+LogicVRegister Simulator::sha512su0(LogicVRegister srcdst,
+                                    const LogicVRegister& src1) {
+  uint64_t w[2] = {};
+  uint64_t x[2] = {};
+  uint64_t result[2] = {};
+  srcdst.UintArray(kFormat2D, w);
+  src1.UintArray(kFormat2D, x);
+
+  result[0] = SHASURotate<uint64_t, 1, 8, 7>(w[1]) + w[0];
+  result[1] = SHASURotate<uint64_t, 1, 8, 7>(x[0]) + w[1];
+
+  srcdst.SetUintArray(kFormat2D, result);
+  return srcdst;
+}
+
+LogicVRegister Simulator::sha512su1(LogicVRegister srcdst,
+                                    const LogicVRegister& src1,
+                                    const LogicVRegister& src2) {
+  uint64_t w[2] = {};
+  uint64_t x[2] = {};
+  uint64_t y[2] = {};
+  uint64_t result[2] = {};
+  srcdst.UintArray(kFormat2D, w);
+  src1.UintArray(kFormat2D, x);
+  src2.UintArray(kFormat2D, y);
+
+  result[1] = w[1] + SHASURotate<uint64_t, 19, 61, 6>(x[1]) + y[1];
+  result[0] = w[0] + SHASURotate<uint64_t, 19, 61, 6>(x[0]) + y[0];
+
+  srcdst.SetUintArray(kFormat2D, result);
+  return srcdst;
 }
 
 }  // namespace aarch64

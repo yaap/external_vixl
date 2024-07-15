@@ -25,6 +25,8 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+#include "test-disasm-aarch64.h"
+
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -33,7 +35,6 @@
 
 #include "aarch64/disasm-aarch64.h"
 #include "aarch64/macro-assembler-aarch64.h"
-#include "test-disasm-aarch64.h"
 
 namespace vixl {
 namespace aarch64 {
@@ -1851,8 +1852,8 @@ TEST(load_store_exclusive) {
 TEST(atomic_memory) {
   SETUP();
 
-// These macros generate tests for all the variations of the atomic memory
-// operations, e.g. ldadd, ldadda, ldaddb, staddl, etc.
+  // These macros generate tests for all the variations of the atomic memory
+  // operations, e.g. ldadd, ldadda, ldaddb, staddl, etc.
 
 #define AM_LOAD_X_TESTS(N, MN)                                     \
   COMPARE(ld##N(x0, x1, MemOperand(x2)), "ld" MN " x0, x1, [x2]"); \
@@ -3358,6 +3359,20 @@ TEST(cssc) {
   CLEANUP();
 }
 
+TEST(gcs) {
+  SETUP();
+
+  COMPARE_MACRO(Chkfeat(x16), "chkfeat x16");
+  COMPARE_MACRO(Gcspopm(x0), "gcspopm x0");
+  COMPARE_MACRO(Gcspopm(), "gcspopm");
+  COMPARE_MACRO(Gcspopm(xzr), "gcspopm");
+  COMPARE_MACRO(Gcsss1(x4), "gcsss1 x4");
+  COMPARE_MACRO(Gcsss2(x2), "gcsss2 x2");
+  COMPARE_MACRO(Gcspushm(x1), "gcspushm x1");
+
+  CLEANUP();
+}
+
 TEST(architecture_features) {
   SETUP();
 
@@ -3542,8 +3557,8 @@ TEST(architecture_features) {
   COMPARE_PREFIX(dci(0xf8e08000), "swpal");      // SWPAL_64_memop
 
   // ARMv8.1 - RDM
-  COMPARE_PREFIX(dci(0x2e008400), "sqrdmlah");  // SQRDMLAH_asimdsame2_only
-  COMPARE_PREFIX(dci(0x2e008c00), "sqrdmlsh");  // SQRDMLSH_asimdsame2_only
+  COMPARE_PREFIX(dci(0x2e808400), "sqrdmlah");  // SQRDMLAH_asimdsame2_only
+  COMPARE_PREFIX(dci(0x2e808c00), "sqrdmlsh");  // SQRDMLSH_asimdsame2_only
   COMPARE_PREFIX(dci(0x2f40d000), "sqrdmlah");  // SQRDMLAH_asimdelem_R
   COMPARE_PREFIX(dci(0x2f40f000), "sqrdmlsh");  // SQRDMLSH_asimdelem_R
   COMPARE_PREFIX(dci(0x7e008400), "sqrdmlah");  // SQRDMLAH_asisdsame2_only
@@ -3552,9 +3567,9 @@ TEST(architecture_features) {
   COMPARE_PREFIX(dci(0x7f40f000), "sqrdmlsh");  // SQRDMLSH_asisdelem_R
 
   // ARMv8.2 - DotProd
-  COMPARE_PREFIX(dci(0x0e009400), "sdot");  // SDOT_asimdsame2_D
+  COMPARE_PREFIX(dci(0x0e809400), "sdot");  // SDOT_asimdsame2_D
   COMPARE_PREFIX(dci(0x0f00e000), "sdot");  // SDOT_asimdelem_D
-  COMPARE_PREFIX(dci(0x2e009400), "udot");  // UDOT_asimdsame2_D
+  COMPARE_PREFIX(dci(0x2e809400), "udot");  // UDOT_asimdsame2_D
   COMPARE_PREFIX(dci(0x2f00e000), "udot");  // UDOT_asimdelem_D
 
   // ARMv8.2 - FHM
@@ -3774,19 +3789,17 @@ TEST(architecture_features) {
   COMPARE_PREFIX(dci(0xd503221f), "esb");  // ESB_HI_hints
 
   // ARMv8.2 - SHA3
-  // COMPARE_PREFIX(dci(0xce000000), "eor3");   // EOR3_VVV16_crypto4
-  // COMPARE_PREFIX(dci(0xce200000), "bcax");   // BCAX_VVV16_crypto4
-  // COMPARE_PREFIX(dci(0xce608c00), "rax1");   // RAX1_VVV2_cryptosha512_3
-  // COMPARE_PREFIX(dci(0xce800000), "xar");   // XAR_VVV2_crypto3_imm6
+  COMPARE_PREFIX(dci(0xce000000), "eor3");  // EOR3_VVV16_crypto4
+  COMPARE_PREFIX(dci(0xce200000), "bcax");  // BCAX_VVV16_crypto4
+  COMPARE_PREFIX(dci(0xce608c00), "rax1");  // RAX1_VVV2_cryptosha512_3
+  COMPARE_PREFIX(dci(0xce800000), "xar");   // XAR_VVV2_crypto3_imm6
 
   // ARMv8.2 - SHA512
-  // COMPARE_PREFIX(dci(0xce608000), "sha512h");   // SHA512H_QQV_cryptosha512_3
-  // COMPARE_PREFIX(dci(0xce608400), "sha512h2");   //
-  // SHA512H2_QQV_cryptosha512_3
-  // COMPARE_PREFIX(dci(0xce608800), "sha512su1");   //
-  // SHA512SU1_VVV2_cryptosha512_3
-  // COMPARE_PREFIX(dci(0xcec08000), "sha512su0");   //
-  // SHA512SU0_VV2_cryptosha512_2
+  COMPARE_PREFIX(dci(0xce608000), "sha512h");   // SHA512H_QQV_cryptosha512_3
+  COMPARE_PREFIX(dci(0xce608400), "sha512h2");  // SHA512H2_QQV_cryptosha512_3
+  COMPARE_PREFIX(dci(0xce608800),
+                 "sha512su1");  // SHA512SU1_VVV2_cryptosha512_3
+  COMPARE_PREFIX(dci(0xcec08000), "sha512su0");  // SHA512SU0_VV2_cryptosha512_2
 
   // ARMv8.2 - SM3
   // COMPARE_PREFIX(dci(0xce400000), "sm3ss1");   // SM3SS1_VVV4_crypto4
@@ -3809,7 +3822,7 @@ TEST(architecture_features) {
 
   // ARMv8.3 - FCMA
   COMPARE_PREFIX(dci(0x2e40c400), "fcmla");  // FCMLA_asimdsame2_C
-  COMPARE_PREFIX(dci(0x2e00e400), "fcadd");  // FCADD_asimdsame2_C
+  COMPARE_PREFIX(dci(0x2e40e400), "fcadd");  // FCADD_asimdsame2_C
   COMPARE_PREFIX(dci(0x2f401000), "fcmla");  // FCMLA_asimdelem_C_H
   COMPARE_PREFIX(dci(0x6f801000), "fcmla");  // FCMLA_asimdelem_C_S
 
