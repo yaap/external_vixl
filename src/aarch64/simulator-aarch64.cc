@@ -32,8 +32,23 @@
 #include <cstring>
 #include <errno.h>
 #include <limits>
+
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <Windows.h>
+#undef MultiplyHigh
+#include <Memoryapi.h>
+#else
 #include <sys/mman.h>
 #include <unistd.h>
+#endif
+
+#ifdef _MSC_VER
+#define VIXL_SYNC() MemoryBarrier()
+#else
+#define VIXL_SYNC() __sync_synchronize()
+#endif
 
 namespace vixl {
 namespace aarch64 {
@@ -515,6 +530,8 @@ const Simulator::FormToVisitorFnMap* Simulator::GetFormToVisitorFnMap() {
       {"sha512h2_qqv_cryptosha512_3"_h, &Simulator::SimulateSHA512},
       {"sha512su0_vv2_cryptosha512_2"_h, &Simulator::SimulateSHA512},
       {"sha512su1_vvv2_cryptosha512_3"_h, &Simulator::SimulateSHA512},
+      {"pmullb_z_zz_q"_h, &Simulator::SimulateSVEPmull128},
+      {"pmullt_z_zz_q"_h, &Simulator::SimulateSVEPmull128},
   };
   return &form_to_visitor;
 }
@@ -556,7 +573,9 @@ Simulator::Simulator(Decoder* decoder, FILE* stream, SimStack::Allocated stack)
   VIXL_ASSERT((static_cast<uint32_t>(-1) >> 1) == 0x7fffffff);
 
   // Set up a placeholder pipe for CanReadMemory.
+#ifndef _WIN32
   VIXL_CHECK(pipe(placeholder_pipe_fd_) == 0);
+#endif
 
   // Set up the decoder.
   decoder_ = decoder;
@@ -594,9 +613,8 @@ Simulator::Simulator(Decoder* decoder, FILE* stream, SimStack::Allocated stack)
   guard_pages_ = false;
 
   // Initialize the common state of RNDR and RNDRRS.
-  uint16_t seed[3] = {11, 22, 33};
-  VIXL_STATIC_ASSERT(sizeof(seed) == sizeof(rand_state_));
-  memcpy(rand_state_, seed, sizeof(rand_state_));
+  uint64_t seed = (11 + (22 << 16) + (static_cast<uint64_t>(33) << 32));
+  rand_gen_.seed(seed);
 
   // Initialize all bits of pseudo predicate register to true.
   LogicPRegister ones(pregister_all_true_);
@@ -707,8 +725,10 @@ Simulator::~Simulator() {
   // The decoder may outlive the simulator.
   decoder_->RemoveVisitor(print_disasm_);
   delete print_disasm_;
+#ifndef _WIN32
   close(placeholder_pipe_fd_[0]);
   close(placeholder_pipe_fd_[1]);
+#endif
   if (IsAllocatedGCS(gcs_)) {
     GetGCSManager().FreeStack(gcs_);
   }
@@ -1036,11 +1056,11 @@ vixl_uint128_t Simulator::Neg128(vixl_uint128_t x) {
 vixl_uint128_t Simulator::Mul64(uint64_t x, uint64_t y) {
   bool neg_result = false;
   if ((x >> 63) == 1) {
-    x = -x;
+    x = UnsignedNegate(x);
     neg_result = !neg_result;
   }
   if ((y >> 63) == 1) {
-    y = -y;
+    y = UnsignedNegate(y);
     neg_result = !neg_result;
   }
 
@@ -1059,7 +1079,8 @@ vixl_uint128_t Simulator::Mul64(uint64_t x, uint64_t y) {
   vixl_uint128_t result = Add128(a, b);
   result = Add128(result, c);
   result = Add128(result, d);
-  return neg_result ? std::make_pair(-result.first - 1, -result.second)
+  return neg_result ? std::make_pair(UnsignedNegate(result.first) - 1,
+                                     UnsignedNegate(result.second))
                     : result;
 }
 
@@ -1815,7 +1836,7 @@ void Simulator::PrintSystemRegister(SystemRegister id) {
 void Simulator::PrintGCS(bool is_push, uint64_t addr, size_t entry) {
   const char* arrow = is_push ? "<-" : "->";
   fprintf(stream_,
-          "# %sgcs0x%04" PRIx64 "[%" PRIu64 "]: %s %s 0x%016" PRIxPTR "\n",
+          "# %sgcs0x%04" PRIx64 "[%" PRIxPTR "]: %s %s 0x%016" PRIx64 "\n",
           clr_flag_name,
           gcs_,
           entry,
@@ -2890,6 +2911,23 @@ void Simulator::SimulateSVEInterleavedArithLong(const Instruction* instr) {
   }
 }
 
+void Simulator::SimulateSVEPmull128(const Instruction* instr) {
+  SimVRegister& zd = ReadVRegister(instr->GetRd());
+  SimVRegister& zm = ReadVRegister(instr->GetRm());
+  SimVRegister& zn = ReadVRegister(instr->GetRn());
+  SimVRegister zn_temp, zm_temp;
+
+  if (form_hash_ == "pmullb_z_zz_q"_h) {
+    pack_even_elements(kFormatVnD, zn_temp, zn);
+    pack_even_elements(kFormatVnD, zm_temp, zm);
+  } else {
+    VIXL_ASSERT(form_hash_ == "pmullt_z_zz_q"_h);
+    pack_odd_elements(kFormatVnD, zn_temp, zn);
+    pack_odd_elements(kFormatVnD, zm_temp, zm);
+  }
+  pmull(kFormatVnQ, zd, zn_temp, zm_temp);
+}
+
 void Simulator::SimulateSVEIntMulLongVec(const Instruction* instr) {
   VectorFormat vform = instr->GetSVEVectorFormat();
   SimVRegister& zd = ReadVRegister(instr->GetRd());
@@ -2904,15 +2942,15 @@ void Simulator::SimulateSVEIntMulLongVec(const Instruction* instr) {
 
   switch (form_hash_) {
     case "pmullb_z_zz"_h:
-      // '00' is reserved for Q-sized lane.
-      if (vform == kFormatVnB) {
+      // Size '10' is undefined.
+      if (vform == kFormatVnS) {
         VIXL_UNIMPLEMENTED();
       }
       pmull(vform, zd, zn_b, zm_b);
       break;
     case "pmullt_z_zz"_h:
-      // '00' is reserved for Q-sized lane.
-      if (vform == kFormatVnB) {
+      // Size '10' is undefined.
+      if (vform == kFormatVnS) {
         VIXL_UNIMPLEMENTED();
       }
       pmull(vform, zd, zn_t, zm_t);
@@ -3906,13 +3944,14 @@ void Simulator::VisitUnconditionalBranchToRegister(const Instruction* instr) {
       if ((expected_lr & 0x3) != 0) {
         snprintf(msg,
                  sizeof(msg),
-                 "GCS contains misaligned return address: 0x%016lx\n",
+                 "GCS contains misaligned return address: 0x%016" PRIx64 "\n",
                  expected_lr);
         ReportGCSFailure(msg);
       } else if ((addr != 0) && (addr != expected_lr)) {
         snprintf(msg,
                  sizeof(msg),
-                 "GCS mismatch: lr = 0x%016lx, gcs = 0x%016lx\n",
+                 "GCS mismatch: lr = 0x%016" PRIx64 ", gcs = 0x%016" PRIx64
+                 "\n",
                  addr,
                  expected_lr);
         ReportGCSFailure(msg);
@@ -4252,7 +4291,7 @@ void Simulator::LoadAcquireRCpcUnscaledOffsetHelper(const Instruction* instr) {
   WriteRegister<T1>(rt, static_cast<T1>(value));
 
   // Approximate load-acquire by issuing a full barrier after the load.
-  __sync_synchronize();
+  VIXL_SYNC();
 
   LogRead(rt, GetPrintRegisterFormat(element_size), address);
 }
@@ -4277,7 +4316,7 @@ void Simulator::StoreReleaseUnscaledOffsetHelper(const Instruction* instr) {
   }
 
   // Approximate store-release by issuing a full barrier after the load.
-  __sync_synchronize();
+  VIXL_SYNC();
 
   if (!MemWrite<T>(address, ReadRegister<T>(rt))) return;
 
@@ -4723,13 +4762,13 @@ void Simulator::CompareAndSwapHelper(const Instruction* instr) {
 
   if (is_acquire) {
     // Approximate load-acquire by issuing a full barrier after the load.
-    __sync_synchronize();
+    VIXL_SYNC();
   }
 
   if (data == comparevalue) {
     if (is_release) {
       // Approximate store-release by issuing a full barrier before the store.
-      __sync_synchronize();
+      VIXL_SYNC();
     }
     if (!MemWrite<T>(address, newvalue)) return;
     LogWrite(rt, GetPrintRegisterFormatForSize(element_size), address);
@@ -4772,7 +4811,7 @@ void Simulator::CompareAndSwapPairHelper(const Instruction* instr) {
 
   if (is_acquire) {
     // Approximate load-acquire by issuing a full barrier after the load.
-    __sync_synchronize();
+    VIXL_SYNC();
   }
 
   bool same =
@@ -4780,7 +4819,7 @@ void Simulator::CompareAndSwapPairHelper(const Instruction* instr) {
   if (same) {
     if (is_release) {
       // Approximate store-release by issuing a full barrier before the store.
-      __sync_synchronize();
+      VIXL_SYNC();
     }
 
     if (!MemWrite<T>(address, newvalue_low)) return;
@@ -4801,6 +4840,7 @@ void Simulator::CompareAndSwapPairHelper(const Instruction* instr) {
 }
 
 bool Simulator::CanReadMemory(uintptr_t address, size_t size) {
+#ifndef _WIN32
   // To simulate fault-tolerant loads, we need to know what host addresses we
   // can access without generating a real fault. One way to do that is to
   // attempt to `write()` the memory to a placeholder pipe[1]. This is more
@@ -4858,6 +4898,44 @@ bool Simulator::CanReadMemory(uintptr_t address, size_t size) {
   }
 
   return can_read;
+#else
+  // To simulate fault-tolerant loads, we need to know what host addresses we
+  // can access without generating a real fault
+  // The pipe code above is almost but not fully compatible with Windows
+  // Instead, use the platform specific API VirtualQuery()
+  //
+  // [2]: https://stackoverflow.com/a/18395247/9109981
+
+  bool can_read = true;
+  MEMORY_BASIC_INFORMATION pageInfo;
+
+  size_t checked = 0;
+  while (can_read && (checked < size)) {
+    size_t result = VirtualQuery(reinterpret_cast<void*>(address + checked),
+                                 &pageInfo,
+                                 sizeof(pageInfo));
+
+    if (result < 0) {
+      can_read = false;
+      break;
+    }
+
+    if (pageInfo.State != MEM_COMMIT) {
+      can_read = false;
+      break;
+    }
+
+    if (pageInfo.Protect == PAGE_NOACCESS || pageInfo.Protect == PAGE_EXECUTE) {
+      can_read = false;
+      break;
+    }
+    checked += pageInfo.RegionSize -
+               ((address + checked) -
+                reinterpret_cast<uintptr_t>(pageInfo.BaseAddress));
+  }
+
+  return can_read;
+#endif
 }
 
 void Simulator::PrintExclusiveAccessWarning() {
@@ -5010,7 +5088,7 @@ void Simulator::VisitLoadStoreExclusive(const Instruction* instr) {
 
         if (is_acquire_release) {
           // Approximate load-acquire by issuing a full barrier after the load.
-          __sync_synchronize();
+          VIXL_SYNC();
         }
 
         PrintRegisterFormat format = GetPrintRegisterFormatForSize(reg_size);
@@ -5022,7 +5100,7 @@ void Simulator::VisitLoadStoreExclusive(const Instruction* instr) {
         if (is_acquire_release) {
           // Approximate store-release by issuing a full barrier before the
           // store.
-          __sync_synchronize();
+          VIXL_SYNC();
         }
 
         bool do_store = true;
@@ -5115,7 +5193,7 @@ void Simulator::AtomicMemorySimpleHelper(const Instruction* instr) {
 
   if (is_acquire) {
     // Approximate load-acquire by issuing a full barrier after the load.
-    __sync_synchronize();
+    VIXL_SYNC();
   }
 
   T result = 0;
@@ -5149,7 +5227,7 @@ void Simulator::AtomicMemorySimpleHelper(const Instruction* instr) {
 
   if (is_release) {
     // Approximate store-release by issuing a full barrier before the store.
-    __sync_synchronize();
+    VIXL_SYNC();
   }
 
   WriteRegister<T>(rt, data, NoRegLog);
@@ -5184,12 +5262,12 @@ void Simulator::AtomicMemorySwapHelper(const Instruction* instr) {
 
   if (is_acquire) {
     // Approximate load-acquire by issuing a full barrier after the load.
-    __sync_synchronize();
+    VIXL_SYNC();
   }
 
   if (is_release) {
     // Approximate store-release by issuing a full barrier before the store.
-    __sync_synchronize();
+    VIXL_SYNC();
   }
   if (!MemWrite<T>(address, ReadRegister<T>(rs))) return;
 
@@ -5215,7 +5293,7 @@ void Simulator::LoadAcquireRCpcHelper(const Instruction* instr) {
   WriteRegister<T>(rt, value);
 
   // Approximate load-acquire by issuing a full barrier after the load.
-  __sync_synchronize();
+  VIXL_SYNC();
 
   LogRead(rt, GetPrintRegisterFormatForSize(element_size), address);
 }
@@ -5476,7 +5554,7 @@ void Simulator::VisitConditionalSelect(const Instruction* instr) {
         break;
       case CSNEG_w:
       case CSNEG_x:
-        new_val = -new_val;
+        new_val = UnsignedNegate(new_val);
         break;
       default:
         VIXL_UNIMPLEMENTED();
@@ -6848,7 +6926,7 @@ bool Simulator::FPProcessNaNs(const Instruction* instr) {
 }
 
 
-void Simulator::SysOp_W(int op, int64_t val) {
+bool Simulator::SysOp_W(int op, int64_t val) {
   switch (op) {
     case IVAU:
     case CVAC:
@@ -6870,12 +6948,27 @@ void Simulator::SysOp_W(int op, int64_t val) {
       volatile uint8_t y = *MemRead<uint8_t>(val);
       MetaDataDepot::MetaDataMTE::SetActive(mte_enabled);
       USE(y);
-      // TODO: Implement ZVA, GVA, GZVA.
       break;
     }
+    case ZVA: {
+      if ((dczid_ & 0x10) != 0) {  // Check dc zva is enabled.
+        return false;
+      }
+      int blocksize = (1 << (dczid_ & 0xf)) * kWRegSizeInBytes;
+      VIXL_ASSERT(IsMultiple(blocksize, sizeof(uint64_t)));
+      uintptr_t addr = AlignDown(val, blocksize);
+      for (int i = 0; i < blocksize; i += sizeof(uint64_t)) {
+        MemWrite<uint64_t>(addr + i, 0);
+        LogWriteU64(0, addr + i);
+      }
+      break;
+    }
+    // TODO: Implement GVA, GZVA.
     default:
       VIXL_UNIMPLEMENTED();
+      return false;
   }
+  return true;
 }
 
 void Simulator::PACHelper(int dst,
@@ -6947,8 +7040,8 @@ void Simulator::VisitSystem(const Instruction* instr) {
           break;
         case RNDR:
         case RNDRRS: {
-          uint64_t high = jrand48(rand_state_);
-          uint64_t low = jrand48(rand_state_);
+          uint64_t high = rand_gen_();
+          uint64_t low = rand_gen_();
           uint64_t rand_num = (high << 32) | (low & 0xffffffff);
           WriteXRegister(instr->GetRt(), rand_num);
           // Simulate successful random number generation.
@@ -6958,6 +7051,9 @@ void Simulator::VisitSystem(const Instruction* instr) {
           LogSystemRegister(NZCV);
           break;
         }
+        case DCZID_EL0:
+          WriteXRegister(instr->GetRt(), dczid_);
+          break;
         default:
           VIXL_UNIMPLEMENTED();
       }
@@ -7051,7 +7147,7 @@ void Simulator::VisitSystem(const Instruction* instr) {
     case "dsb_bo_barriers"_h:
     case "dmb_bo_barriers"_h:
     case "isb_bi_barriers"_h:
-      __sync_synchronize();
+      VIXL_SYNC();
       break;
     case "sys_cr_systeminstrs"_h: {
       uint64_t rt = ReadXRegister(instr->GetRt());
@@ -7075,7 +7171,9 @@ void Simulator::VisitSystem(const Instruction* instr) {
       } else if (sysop == GCSPUSHM) {
         GCSPush(ReadXRegister(instr->GetRt()));
       } else {
-        SysOp_W(sysop, rt);
+        if (!SysOp_W(sysop, rt)) {
+          VisitUnallocated(instr);
+        }
       }
       break;
     }
@@ -7239,7 +7337,75 @@ void Simulator::VisitCrypto3RegSHA(const Instruction* instr) {
 
 
 void Simulator::VisitCryptoAES(const Instruction* instr) {
-  VisitUnimplemented(instr);
+  SimVRegister& rd = ReadVRegister(instr->GetRd());
+  SimVRegister& rn = ReadVRegister(instr->GetRn());
+  SimVRegister temp;
+
+  switch (form_hash_) {
+    case "aesd_b_cryptoaes"_h:
+      eor(kFormat16B, temp, rd, rn);
+      aes(rd, temp, /* decrypt = */ true);
+      break;
+    case "aese_b_cryptoaes"_h:
+      eor(kFormat16B, temp, rd, rn);
+      aes(rd, temp, /* decrypt = */ false);
+      break;
+    case "aesimc_b_cryptoaes"_h:
+      aesmix(rd, rn, /* inverse = */ true);
+      break;
+    case "aesmc_b_cryptoaes"_h:
+      aesmix(rd, rn, /* inverse = */ false);
+      break;
+  }
+}
+
+void Simulator::VisitCryptoSM3(const Instruction* instr) {
+  SimVRegister& rd = ReadVRegister(instr->GetRd());
+  SimVRegister& rn = ReadVRegister(instr->GetRn());
+  SimVRegister& rm = ReadVRegister(instr->GetRm());
+  SimVRegister& ra = ReadVRegister(instr->GetRa());
+  int index = instr->ExtractBits(13, 12);
+
+  bool is_a = false;
+  switch (form_hash_) {
+    case "sm3partw1_vvv4_cryptosha512_3"_h:
+      sm3partw1(rd, rn, rm);
+      break;
+    case "sm3partw2_vvv4_cryptosha512_3"_h:
+      sm3partw2(rd, rn, rm);
+      break;
+    case "sm3ss1_vvv4_crypto4"_h:
+      sm3ss1(rd, rn, rm, ra);
+      break;
+    case "sm3tt1a_vvv4_crypto3_imm2"_h:
+      is_a = true;
+      VIXL_FALLTHROUGH();
+    case "sm3tt1b_vvv4_crypto3_imm2"_h:
+      sm3tt1(rd, rn, rm, index, is_a);
+      break;
+    case "sm3tt2a_vvv4_crypto3_imm2"_h:
+      is_a = true;
+      VIXL_FALLTHROUGH();
+    case "sm3tt2b_vvv_crypto3_imm2"_h:
+      sm3tt2(rd, rn, rm, index, is_a);
+      break;
+  }
+}
+
+void Simulator::VisitCryptoSM4(const Instruction* instr) {
+  SimVRegister& rd = ReadVRegister(instr->GetRd());
+  SimVRegister& rn = ReadVRegister(instr->GetRn());
+  SimVRegister& rm = ReadVRegister(instr->GetRm());
+
+  bool is_key = false;
+  switch (form_hash_) {
+    case "sm4ekey_vvv4_cryptosha512_3"_h:
+      is_key = true;
+      VIXL_FALLTHROUGH();
+    case "sm4e_vv4_cryptosha512_2"_h:
+      sm4(rd, rn, rm, is_key);
+      break;
+  }
 }
 
 void Simulator::SimulateSHA512(const Instruction* instr) {
@@ -8280,22 +8446,14 @@ void Simulator::VisitNEONAcrossLanes(const Instruction* instr) {
 void Simulator::SimulateNEONMulByElementLong(const Instruction* instr) {
   NEONFormatDecoder nfd(instr);
   VectorFormat vf = nfd.GetVectorFormat(nfd.LongIntegerFormatMap());
-
   SimVRegister& rd = ReadVRegister(instr->GetRd());
   SimVRegister& rn = ReadVRegister(instr->GetRn());
 
-  int rm_reg = instr->GetRm();
-  int index = (instr->GetNEONH() << 1) | instr->GetNEONL();
-  if (instr->GetNEONSize() == 1) {
-    rm_reg = instr->GetRmLow16();
-    index = (index << 1) | instr->GetNEONM();
-  }
-  SimVRegister& rm = ReadVRegister(rm_reg);
-
+  std::pair<int, int> rm_and_index = instr->GetNEONMulRmAndIndex();
   SimVRegister temp;
   VectorFormat indexform =
       VectorFormatHalfWidthDoubleLanes(VectorFormatFillQ(vf));
-  dup_element(indexform, temp, rm, index);
+  dup_elements_to_segments(indexform, temp, rm_and_index);
 
   bool is_2 = instr->Mask(NEON_Q) ? true : false;
 
@@ -8369,21 +8527,9 @@ void Simulator::SimulateNEONFPMulByElement(const Instruction* instr) {
   SimVRegister& rd = ReadVRegister(instr->GetRd());
   SimVRegister& rn = ReadVRegister(instr->GetRn());
 
-  int rm_reg = instr->GetRm();
-  int index =
-      (instr->GetNEONH() << 2) | (instr->GetNEONL() << 1) | instr->GetNEONM();
-
-  if ((vform == kFormat4H) || (vform == kFormat8H)) {
-    rm_reg &= 0xf;
-  } else if ((vform == kFormat2S) || (vform == kFormat4S)) {
-    index >>= 1;
-  } else {
-    VIXL_ASSERT(vform == kFormat2D);
-    VIXL_ASSERT(instr->GetNEONL() == 0);
-    index >>= 2;
-  }
-
-  SimVRegister& rm = ReadVRegister(rm_reg);
+  std::pair<int, int> rm_and_index = instr->GetNEONMulRmAndIndex();
+  SimVRegister& rm = ReadVRegister(rm_and_index.first);
+  int index = rm_and_index.second;
 
   switch (form_hash_) {
     case "fmul_asimdelem_rh_h"_h:
@@ -8463,15 +8609,9 @@ void Simulator::VisitNEONByIndexedElement(const Instruction* instr) {
   SimVRegister& rd = ReadVRegister(instr->GetRd());
   SimVRegister& rn = ReadVRegister(instr->GetRn());
 
-  int rm_reg = instr->GetRm();
-  int index = (instr->GetNEONH() << 1) | instr->GetNEONL();
-
-  if ((vform == kFormat4H) || (vform == kFormat8H)) {
-    rm_reg &= 0xf;
-    index = (index << 1) | instr->GetNEONM();
-  }
-
-  SimVRegister& rm = ReadVRegister(rm_reg);
+  std::pair<int, int> rm_and_index = instr->GetNEONMulRmAndIndex();
+  SimVRegister& rm = ReadVRegister(rm_and_index.first);
+  int index = rm_and_index.second;
 
   switch (form_hash_) {
     case "mul_asimdelem_r"_h:
@@ -9050,7 +9190,7 @@ void Simulator::VisitNEONModifiedImmediate(const Instruction* instr) {
         vform = q ? kFormat2D : kFormat1D;
         imm = 0;
         for (int i = 0; i < 8; ++i) {
-          if (imm8 & (1 << i)) {
+          if (imm8 & (uint64_t{1} << i)) {
             imm |= (UINT64_C(0xff) << (8 * i));
           }
         }
@@ -9530,78 +9670,76 @@ void Simulator::VisitNEONScalar3SameExtra(const Instruction* instr) {
 void Simulator::VisitNEONScalarByIndexedElement(const Instruction* instr) {
   NEONFormatDecoder nfd(instr, NEONFormatDecoder::LongScalarFormatMap());
   VectorFormat vf = nfd.GetVectorFormat();
-  VectorFormat vf_r = nfd.GetVectorFormat(nfd.ScalarFormatMap());
-
   SimVRegister& rd = ReadVRegister(instr->GetRd());
   SimVRegister& rn = ReadVRegister(instr->GetRn());
   ByElementOp Op = NULL;
 
-  int rm_reg = instr->GetRm();
-  int index = (instr->GetNEONH() << 1) | instr->GetNEONL();
-  if (instr->GetNEONSize() == 1) {
-    rm_reg &= 0xf;
-    index = (index << 1) | instr->GetNEONM();
+  std::pair<int, int> rm_and_index = instr->GetNEONMulRmAndIndex();
+  std::unordered_map<uint32_t, ByElementOp> handler = {
+      {"sqdmull_asisdelem_l"_h, &Simulator::sqdmull},
+      {"sqdmlal_asisdelem_l"_h, &Simulator::sqdmlal},
+      {"sqdmlsl_asisdelem_l"_h, &Simulator::sqdmlsl},
+      {"sqdmulh_asisdelem_r"_h, &Simulator::sqdmulh},
+      {"sqrdmulh_asisdelem_r"_h, &Simulator::sqrdmulh},
+      {"sqrdmlah_asisdelem_r"_h, &Simulator::sqrdmlah},
+      {"sqrdmlsh_asisdelem_r"_h, &Simulator::sqrdmlsh},
+      {"fmul_asisdelem_rh_h"_h, &Simulator::fmul},
+      {"fmul_asisdelem_r_sd"_h, &Simulator::fmul},
+      {"fmla_asisdelem_rh_h"_h, &Simulator::fmla},
+      {"fmla_asisdelem_r_sd"_h, &Simulator::fmla},
+      {"fmls_asisdelem_rh_h"_h, &Simulator::fmls},
+      {"fmls_asisdelem_r_sd"_h, &Simulator::fmls},
+      {"fmulx_asisdelem_rh_h"_h, &Simulator::fmulx},
+      {"fmulx_asisdelem_r_sd"_h, &Simulator::fmulx},
+  };
+
+  std::unordered_map<uint32_t, ByElementOp>::const_iterator it =
+      handler.find(form_hash_);
+
+  if (it == handler.end()) {
+    VIXL_UNIMPLEMENTED();
+  } else {
+    Op = it->second;
   }
 
-  switch (instr->Mask(NEONScalarByIndexedElementMask)) {
-    case NEON_SQDMULL_byelement_scalar:
-      Op = &Simulator::sqdmull;
+  switch (form_hash_) {
+    case "sqdmull_asisdelem_l"_h:
+    case "sqdmlal_asisdelem_l"_h:
+    case "sqdmlsl_asisdelem_l"_h:
+      if ((vf == kFormatB) || (vf == kFormatH)) {
+        VisitUnallocated(instr);
+        return;
+      }
       break;
-    case NEON_SQDMLAL_byelement_scalar:
-      Op = &Simulator::sqdmlal;
+    case "sqdmulh_asisdelem_r"_h:
+    case "sqrdmulh_asisdelem_r"_h:
+    case "sqrdmlah_asisdelem_r"_h:
+    case "sqrdmlsh_asisdelem_r"_h:
+      vf = nfd.GetVectorFormat(nfd.ScalarFormatMap());
+      if ((vf == kFormatB) || (vf == kFormatD)) {
+        VisitUnallocated(instr);
+        return;
+      }
       break;
-    case NEON_SQDMLSL_byelement_scalar:
-      Op = &Simulator::sqdmlsl;
-      break;
-    case NEON_SQDMULH_byelement_scalar:
-      Op = &Simulator::sqdmulh;
-      vf = vf_r;
-      break;
-    case NEON_SQRDMULH_byelement_scalar:
-      Op = &Simulator::sqrdmulh;
-      vf = vf_r;
-      break;
-    case NEON_SQRDMLAH_byelement_scalar:
-      Op = &Simulator::sqrdmlah;
-      vf = vf_r;
-      break;
-    case NEON_SQRDMLSH_byelement_scalar:
-      Op = &Simulator::sqrdmlsh;
-      vf = vf_r;
-      break;
-    default:
+    case "fmul_asisdelem_r_sd"_h:
+    case "fmla_asisdelem_r_sd"_h:
+    case "fmls_asisdelem_r_sd"_h:
+    case "fmulx_asisdelem_r_sd"_h:
       vf = nfd.GetVectorFormat(nfd.FPScalarFormatMap());
-      index = instr->GetNEONH();
-      if (instr->GetFPType() == 0) {
-        index = (index << 2) | (instr->GetNEONL() << 1) | instr->GetNEONM();
-        rm_reg &= 0xf;
-        vf = kFormatH;
-      } else if ((instr->GetFPType() & 1) == 0) {
-        index = (index << 1) | instr->GetNEONL();
-      }
-      switch (instr->Mask(NEONScalarByIndexedElementFPMask)) {
-        case NEON_FMUL_H_byelement_scalar:
-        case NEON_FMUL_byelement_scalar:
-          Op = &Simulator::fmul;
-          break;
-        case NEON_FMLA_H_byelement_scalar:
-        case NEON_FMLA_byelement_scalar:
-          Op = &Simulator::fmla;
-          break;
-        case NEON_FMLS_H_byelement_scalar:
-        case NEON_FMLS_byelement_scalar:
-          Op = &Simulator::fmls;
-          break;
-        case NEON_FMULX_H_byelement_scalar:
-        case NEON_FMULX_byelement_scalar:
-          Op = &Simulator::fmulx;
-          break;
-        default:
-          VIXL_UNIMPLEMENTED();
-      }
+      break;
+    case "fmul_asisdelem_rh_h"_h:
+    case "fmla_asisdelem_rh_h"_h:
+    case "fmls_asisdelem_rh_h"_h:
+    case "fmulx_asisdelem_rh_h"_h:
+      vf = kFormatH;
+      break;
   }
 
-  (this->*Op)(vf, rd, rn, ReadVRegister(rm_reg), index);
+  (this->*Op)(vf,
+              rd,
+              rn,
+              ReadVRegister(rm_and_index.first),
+              rm_and_index.second);
 }
 
 
@@ -12222,7 +12360,7 @@ void Simulator::VisitSVEBroadcastIntImm_Unpredicated(const Instruction* instr) {
   VectorFormat format = instr->GetSVEVectorFormat();
   int64_t imm = instr->GetImmSVEIntWideSigned();
   int shift = instr->ExtractBit(13) * 8;
-  imm *= 1 << shift;
+  imm *= uint64_t{1} << shift;
 
   switch (instr->Mask(SVEBroadcastIntImm_UnpredicatedMask)) {
     case DUP_z_i:
@@ -12974,7 +13112,7 @@ void Simulator::VisitSVELoadMultipleStructures_ScalarPlusScalar(
     case LD4H_z_p_br_contiguous:
     case LD4W_z_p_br_contiguous: {
       int msz = instr->ExtractBits(24, 23);
-      uint64_t offset = ReadXRegister(instr->GetRm()) * (1 << msz);
+      uint64_t offset = ReadXRegister(instr->GetRm()) * (uint64_t{1} << msz);
       VectorFormat vform = SVEFormatFromLaneSizeInBytesLog2(msz);
       LogicSVEAddressVector addr(
           ReadXRegister(instr->GetRn(), Reg31IsStackPointer) + offset);
@@ -13410,7 +13548,7 @@ void Simulator::VisitSVEStoreMultipleStructures_ScalarPlusScalar(
     case ST4H_z_p_br_contiguous:
     case ST4W_z_p_br_contiguous: {
       int msz = instr->ExtractBits(24, 23);
-      uint64_t offset = ReadXRegister(instr->GetRm()) * (1 << msz);
+      uint64_t offset = ReadXRegister(instr->GetRm()) * (uint64_t{1} << msz);
       VectorFormat vform = SVEFormatFromLaneSizeInBytesLog2(msz);
       LogicSVEAddressVector addr(
           ReadXRegister(instr->GetRn(), Reg31IsStackPointer) + offset);
@@ -14544,7 +14682,7 @@ void Simulator::SimulateMTETagMaskInsert(const Instruction* instr) {
   uint64_t mask = ReadXRegister(instr->GetRm());
   uint64_t tag = GetAllocationTagFromAddress(
       ReadXRegister(instr->GetRn(), Reg31IsStackPointer));
-  uint64_t mask_bit = 1 << tag;
+  uint64_t mask_bit = uint64_t{1} << tag;
   WriteXRegister(instr->GetRd(), mask | mask_bit);
 }
 
@@ -14654,8 +14792,7 @@ void Simulator::SimulateMTEStoreTag(const Instruction* instr) {
   uintptr_t address = AddressModeHelper(instr->GetRn(), offset, addr_mode);
 
   if (is_zeroing) {
-    if (!IsAligned(reinterpret_cast<uintptr_t>(address),
-                   kMTETagGranuleInBytes)) {
+    if (!IsAligned(address, kMTETagGranuleInBytes)) {
       VIXL_ALIGNMENT_EXCEPTION();
     }
     VIXL_STATIC_ASSERT(kMTETagGranuleInBytes >= sizeof(uint64_t));
@@ -14792,7 +14929,7 @@ void Simulator::SimulateSetM(const Instruction* instr) {
 
   while (xn--) {
     LogWrite(instr->GetRs(), GetPrintRegPartial(kPrintRegLaneSizeB), xd);
-    if (!MemWrite<uint8_t>(xd++, xs)) return;
+    if (!MemWrite<uint8_t>(xd++, static_cast<uint8_t>(xs))) return;
   }
   WriteXRegister(instr->GetRd(), xd);
   WriteXRegister(instr->GetRn(), 0);
@@ -15028,13 +15165,14 @@ void Simulator::DoRuntimeCall(const Instruction* instr) {
       if ((expected_lr & 0x3) != 0) {
         snprintf(msg,
                  sizeof(msg),
-                 "GCS contains misaligned return address: 0x%016lx\n",
+                 "GCS contains misaligned return address: 0x%016" PRIx64 "\n",
                  expected_lr);
         ReportGCSFailure(msg);
       } else if ((addr != 0) && (addr != expected_lr)) {
         snprintf(msg,
                  sizeof(msg),
-                 "GCS mismatch: lr = 0x%016lx, gcs = 0x%016lx\n",
+                 "GCS mismatch: lr = 0x%016" PRIx64 ", gcs = 0x%016" PRIx64
+                 "\n",
                  addr,
                  expected_lr);
         ReportGCSFailure(msg);
@@ -15110,6 +15248,7 @@ void Simulator::DoRestoreCPUFeatures(const Instruction* instr) {
   saved_cpu_features_.pop_back();
 }
 
+#ifdef VIXL_HAS_SIMULATED_MMAP
 void* Simulator::Mmap(
     void* address, size_t length, int prot, int flags, int fd, off_t offset) {
   // The underlying system `mmap` in the simulated environment doesn't recognize
@@ -15142,7 +15281,7 @@ int Simulator::Munmap(void* address, size_t length, int prot) {
 
   return munmap(address, length);
 }
-
+#endif  // VIXL_HAS_SIMULATED_MMAP
 
 }  // namespace aarch64
 }  // namespace vixl

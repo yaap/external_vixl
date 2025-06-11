@@ -196,6 +196,8 @@ class Disassembler : public DecoderVisitor {
   void DisassembleSVEBitwiseTernary(const Instruction* instr);
   void DisassembleSVEFlogb(const Instruction* instr);
   void DisassembleSVEFPPair(const Instruction* instr);
+  void DisassembleSVEPmull(const Instruction* instr);
+  void DisassembleSVEPmull128(const Instruction* instr);
 
   void DisassembleNoArgs(const Instruction* instr);
 
@@ -242,6 +244,9 @@ class Disassembler : public DecoderVisitor {
   void Disassemble_XdSP_XnSP_uimm6_uimm4(const Instruction* instr);
   void Disassemble_Xd_XnSP_Xm(const Instruction* instr);
   void Disassemble_Xd_XnSP_XmSP(const Instruction* instr);
+
+  void VisitCryptoSM3(const Instruction* instr);
+  void VisitCryptoSM4(const Instruction* instr);
 
   void Format(const Instruction* instr,
               const char* mnemonic,

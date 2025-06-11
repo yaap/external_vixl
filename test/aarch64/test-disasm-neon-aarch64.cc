@@ -4568,6 +4568,48 @@ TEST(neon_sha512) {
   CLEANUP();
 }
 
+TEST(neon_aes) {
+  SETUP();
+
+  COMPARE_MACRO(Aesd(v0.V16B(), v29.V16B()), "aesd v0.16b, v29.16b");
+  COMPARE_MACRO(Aese(v0.V16B(), v29.V16B()), "aese v0.16b, v29.16b");
+  COMPARE_MACRO(Aesimc(v0.V16B(), v29.V16B()), "aesimc v0.16b, v29.16b");
+  COMPARE_MACRO(Aesmc(v0.V16B(), v29.V16B()), "aesmc v0.16b, v29.16b");
+
+  CLEANUP();
+}
+
+TEST(neon_sm3) {
+  SETUP();
+
+  COMPARE_MACRO(Sm3partw1(v12.V4S(), v13.V4S(), v14.V4S()),
+                "sm3partw1 v12.4s, v13.4s, v14.4s");
+  COMPARE_MACRO(Sm3partw2(v12.V4S(), v13.V4S(), v14.V4S()),
+                "sm3partw2 v12.4s, v13.4s, v14.4s");
+  COMPARE_MACRO(Sm3ss1(v13.V4S(), v15.V4S(), v17.V4S(), v21.V4S()),
+                "sm3ss1 v13.4s, v15.4s, v17.4s, v21.4s");
+  COMPARE_MACRO(Sm3tt1a(v30.V4S(), v29.V4S(), v9.V4S(), 1),
+                "sm3tt1a v30.4s, v29.4s, v9.s[1]");
+  COMPARE_MACRO(Sm3tt1b(v30.V4S(), v29.V4S(), v9.V4S(), 3),
+                "sm3tt1b v30.4s, v29.4s, v9.s[3]");
+  COMPARE_MACRO(Sm3tt2a(v30.V4S(), v29.V4S(), v9.V4S(), 2),
+                "sm3tt2a v30.4s, v29.4s, v9.s[2]");
+  COMPARE_MACRO(Sm3tt2b(v30.V4S(), v29.V4S(), v9.V4S(), 0),
+                "sm3tt2b v30.4s, v29.4s, v9.s[0]");
+
+  CLEANUP();
+}
+
+TEST(neon_sm4) {
+  SETUP();
+
+  COMPARE_MACRO(Sm4e(v12.V4S(), v13.V4S()), "sm4e v12.4s, v13.4s");
+  COMPARE_MACRO(Sm4ekey(v12.V4S(), v13.V4S(), v14.V4S()),
+                "sm4ekey v12.4s, v13.4s, v14.4s");
+
+  CLEANUP();
+}
+
 TEST(neon_unallocated_regression_test) {
   SETUP();
 
@@ -4732,10 +4774,14 @@ TEST(neon_unallocated_regression_test) {
   COMPARE_PREFIX(dci(0x6fd6d80f), "unallocated");  // sqrdmlah v.d, v.d, v.d[]
   COMPARE_PREFIX(dci(0x2fecdae5),
                  "unallocated");  // sqrdmlah v.und, v.und, v.d[]
+  COMPARE_PREFIX(dci(0x7e008429), "unallocated");  // sqrdmlah b9, b1, b0
+  COMPARE_PREFIX(dci(0x7ec08429), "unallocated");  // sqrdmlah d9, d1, d0
   COMPARE_PREFIX(dci(0x7fe0f992), "unallocated");  // sqrdmlsh d, d, v.d[]
   COMPARE_PREFIX(dci(0x6ff1f9df), "unallocated");  // sqrdmlsh v.d, v.d, v.d[]
   COMPARE_PREFIX(dci(0x2fcdfad1),
                  "unallocated");  // sqrdmlsh v.und, v.und, v.d[]
+  COMPARE_PREFIX(dci(0x7e008c29), "unallocated");  // sqrdmlsh b9, b1, b0
+  COMPARE_PREFIX(dci(0x7ec08c29), "unallocated");  // sqrdmlsh d9, d1, d0
   COMPARE_PREFIX(dci(0x7e23b7fa), "unallocated");  // sqrdmulh b, b, b
   COMPARE_PREFIX(dci(0x5f1ad272), "unallocated");  // sqrdmulh b, b, v.b[]
   COMPARE_PREFIX(dci(0x7ef8b6e0), "unallocated");  // sqrdmulh d, d, d

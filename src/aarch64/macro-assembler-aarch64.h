@@ -2812,6 +2812,9 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
   V(sha512su1, Sha512su1)        \
   V(shadd, Shadd)                \
   V(shsub, Shsub)                \
+  V(sm3partw1, Sm3partw1)        \
+  V(sm3partw2, Sm3partw2)        \
+  V(sm4ekey, Sm4ekey)            \
   V(smax, Smax)                  \
   V(smaxp, Smaxp)                \
   V(smin, Smin)                  \
@@ -2906,6 +2909,10 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
   V(abs, Abs)                    \
   V(addp, Addp)                  \
   V(addv, Addv)                  \
+  V(aesd, Aesd)                  \
+  V(aese, Aese)                  \
+  V(aesimc, Aesimc)              \
+  V(aesmc, Aesmc)                \
   V(cls, Cls)                    \
   V(clz, Clz)                    \
   V(cnt, Cnt)                    \
@@ -2958,6 +2965,7 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
   V(sha1su1, Sha1su1)            \
   V(sha256su0, Sha256su0)        \
   V(sha512su0, Sha512su0)        \
+  V(sm4e, Sm4e)                  \
   V(smaxv, Smaxv)                \
   V(sminv, Sminv)                \
   V(sqabs, Sqabs)                \
@@ -3048,7 +3056,11 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
   V(umlsl, Umlsl)                    \
   V(umlsl2, Umlsl2)                  \
   V(sudot, Sudot)                    \
-  V(usdot, Usdot)
+  V(usdot, Usdot)                    \
+  V(sm3tt1a, Sm3tt1a)                \
+  V(sm3tt1b, Sm3tt1b)                \
+  V(sm3tt2a, Sm3tt2a)                \
+  V(sm3tt2b, Sm3tt2b)
 
 
 #define DEFINE_MACRO_ASM_FUNC(ASM, MASM)    \
@@ -3518,6 +3530,14 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
     VIXL_ASSERT(allow_macro_instructions_);
     SingleEmissionCheckScope guard(this);
     st4(vt, vt2, vt3, vt4, lane, dst);
+  }
+  void Sm3ss1(const VRegister& vd,
+              const VRegister& vn,
+              const VRegister& vm,
+              const VRegister& va) {
+    VIXL_ASSERT(allow_macro_instructions_);
+    SingleEmissionCheckScope guard(this);
+    sm3ss1(vd, vn, vm, va);
   }
   void Smov(const Register& rd, const VRegister& vn, int vn_index) {
     VIXL_ASSERT(allow_macro_instructions_);
@@ -8231,9 +8251,10 @@ class MacroAssembler : public Assembler, public MacroAssemblerInterface {
       UseScratchRegisterScope* scratch_scope);
 
   bool LabelIsOutOfRange(Label* label, ImmBranchType branch_type) {
+    int64_t offset = label->GetLocation() - GetCursorOffset();
+    VIXL_ASSERT(IsMultiple(offset, kInstructionSize));
     return !Instruction::IsValidImmPCOffset(branch_type,
-                                            label->GetLocation() -
-                                                GetCursorOffset());
+                                            offset / kInstructionSize);
   }
 
   void ConfigureSimulatorCPUFeaturesHelper(const CPUFeatures& features,

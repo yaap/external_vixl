@@ -275,6 +275,19 @@ void CPUFeaturesAuditor::VisitCrypto3RegSHA(const Instruction* instr) {
 
 void CPUFeaturesAuditor::VisitCryptoAES(const Instruction* instr) {
   RecordInstructionFeaturesScope scope(this);
+  scope.Record(CPUFeatures::kNEON, CPUFeatures::kAES);
+  USE(instr);
+}
+
+void CPUFeaturesAuditor::VisitCryptoSM3(const Instruction* instr) {
+  RecordInstructionFeaturesScope scope(this);
+  scope.Record(CPUFeatures::kNEON, CPUFeatures::kSM3);
+  USE(instr);
+}
+
+void CPUFeaturesAuditor::VisitCryptoSM4(const Instruction* instr) {
+  RecordInstructionFeaturesScope scope(this);
+  scope.Record(CPUFeatures::kNEON, CPUFeatures::kSM4);
   USE(instr);
 }
 
@@ -1869,6 +1882,10 @@ void CPUFeaturesAuditor::Visit(Metadata* metadata, const Instruction* instr) {
          CPUFeatures(CPUFeatures::kNEON, CPUFeatures::kSHA512)},
         {"sha512su1_vvv2_cryptosha512_3"_h,
          CPUFeatures(CPUFeatures::kNEON, CPUFeatures::kSHA512)},
+        {"pmullb_z_zz_q"_h,
+         CPUFeatures(CPUFeatures::kSVE2, CPUFeatures::kSVEPmull128)},
+        {"pmullt_z_zz_q"_h,
+         CPUFeatures(CPUFeatures::kSVE2, CPUFeatures::kSVEPmull128)},
     };
 
     if (features.count(form_hash_) > 0) {

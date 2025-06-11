@@ -4388,7 +4388,7 @@ void Assembler::sqrdmlah(const VRegister& vd,
                          const VRegister& vm) {
   VIXL_ASSERT(CPUHas(CPUFeatures::kNEON, CPUFeatures::kRDM));
   VIXL_ASSERT(AreSameFormat(vd, vn, vm));
-  VIXL_ASSERT(vd.IsVector() || !vd.IsQ());
+  VIXL_ASSERT(vd.IsLaneSizeH() || vd.IsLaneSizeS());
 
   Instr format, op = NEON_SQRDMLAH;
   if (vd.IsScalar()) {
@@ -4407,7 +4407,7 @@ void Assembler::sqrdmlsh(const VRegister& vd,
                          const VRegister& vm) {
   VIXL_ASSERT(CPUHas(CPUFeatures::kNEON, CPUFeatures::kRDM));
   VIXL_ASSERT(AreSameFormat(vd, vn, vm));
-  VIXL_ASSERT(vd.IsVector() || !vd.IsQ());
+  VIXL_ASSERT(vd.IsLaneSizeH() || vd.IsLaneSizeS());
 
   Instr format, op = NEON_SQRDMLSH;
   if (vd.IsScalar()) {
@@ -6021,6 +6021,118 @@ void Assembler::sha512su1(const VRegister& vd, const VRegister& vn, const VRegis
   Emit(0xce608800 | Rd(vd) | Rn(vn) | Rm(vm));
 }
 
+void Assembler::aesd(const VRegister& vd, const VRegister& vn) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kAES));
+  VIXL_ASSERT(vd.Is16B() && vn.Is16B());
+
+  Emit(0x4e285800 | Rd(vd) | Rn(vn));
+}
+
+void Assembler::aese(const VRegister& vd, const VRegister& vn) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kAES));
+  VIXL_ASSERT(vd.Is16B() && vn.Is16B());
+
+  Emit(0x4e284800 | Rd(vd) | Rn(vn));
+}
+
+void Assembler::aesimc(const VRegister& vd, const VRegister& vn) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kAES));
+  VIXL_ASSERT(vd.Is16B() && vn.Is16B());
+
+  Emit(0x4e287800 | Rd(vd) | Rn(vn));
+}
+
+void Assembler::aesmc(const VRegister& vd, const VRegister& vn) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kAES));
+  VIXL_ASSERT(vd.Is16B() && vn.Is16B());
+
+  Emit(0x4e286800 | Rd(vd) | Rn(vn));
+}
+
+void Assembler::sm3partw1(const VRegister& vd, const VRegister& vn, const VRegister& vm) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kSM3));
+  VIXL_ASSERT(vd.Is4S() && vn.Is4S() && vm.Is4S());
+
+  Emit(0xce60c000 | Rd(vd) | Rn(vn) | Rm(vm));
+}
+
+void Assembler::sm3partw2(const VRegister& vd, const VRegister& vn, const VRegister& vm) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kSM3));
+  VIXL_ASSERT(vd.Is4S() && vn.Is4S() && vm.Is4S());
+
+  Emit(0xce60c400 | Rd(vd) | Rn(vn) | Rm(vm));
+}
+
+void Assembler::sm3ss1(const VRegister& vd, const VRegister& vn, const VRegister& vm, const VRegister& va) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kSM3));
+  VIXL_ASSERT(vd.Is4S() && vn.Is4S() && vm.Is4S() && va.Is4S());
+
+  Emit(0xce400000 | Rd(vd) | Rn(vn) | Rm(vm) | Ra(va));
+}
+
+void Assembler::sm3tt1a(const VRegister& vd, const VRegister& vn, const VRegister& vm, int index) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kSM3));
+  VIXL_ASSERT(vd.Is4S() && vn.Is4S() && vm.Is4S());
+  VIXL_ASSERT(IsUint2(index));
+
+  Instr i = static_cast<uint32_t>(index) << 12;
+  Emit(0xce408000 | Rd(vd) | Rn(vn) | Rm(vm) | i);
+}
+
+void Assembler::sm3tt1b(const VRegister& vd, const VRegister& vn, const VRegister& vm, int index) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kSM3));
+  VIXL_ASSERT(vd.Is4S() && vn.Is4S() && vm.Is4S());
+  VIXL_ASSERT(IsUint2(index));
+
+  Instr i = static_cast<uint32_t>(index) << 12;
+  Emit(0xce408400 | Rd(vd) | Rn(vn) | Rm(vm) | i);
+}
+
+void Assembler::sm3tt2a(const VRegister& vd, const VRegister& vn, const VRegister& vm, int index) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kSM3));
+  VIXL_ASSERT(vd.Is4S() && vn.Is4S() && vm.Is4S());
+  VIXL_ASSERT(IsUint2(index));
+
+  Instr i = static_cast<uint32_t>(index) << 12;
+  Emit(0xce408800 | Rd(vd) | Rn(vn) | Rm(vm) | i);
+}
+
+void Assembler::sm3tt2b(const VRegister& vd, const VRegister& vn, const VRegister& vm, int index) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kSM3));
+  VIXL_ASSERT(vd.Is4S() && vn.Is4S() && vm.Is4S());
+  VIXL_ASSERT(IsUint2(index));
+
+  Instr i = static_cast<uint32_t>(index) << 12;
+  Emit(0xce408c00 | Rd(vd) | Rn(vn) | Rm(vm) | i);
+}
+
+void Assembler::sm4e(const VRegister& vd, const VRegister& vn) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kSM4));
+  VIXL_ASSERT(vd.Is4S() && vn.Is4S());
+
+  Emit(0xcec08400 | Rd(vd) | Rn(vn));
+}
+
+void Assembler::sm4ekey(const VRegister& vd, const VRegister& vn, const VRegister& vm) {
+  VIXL_ASSERT(CPUHas(CPUFeatures::kNEON));
+  VIXL_ASSERT(CPUHas(CPUFeatures::kSM4));
+  VIXL_ASSERT(vd.Is4S() && vn.Is4S() && vm.Is4S());
+
+  Emit(0xce60c800 | Rd(vd) | Rn(vn) | Rm(vm));
+}
+
 // Note:
 // For all ToImm instructions below, a difference in case
 // for the same letter indicates a negated bit.
@@ -7065,6 +7177,7 @@ bool Assembler::CPUHas(SystemRegister sysreg) const {
       return CPUHas(CPUFeatures::kRNG);
     case FPCR:
     case NZCV:
+    case DCZID_EL0:
       break;
   }
   return true;

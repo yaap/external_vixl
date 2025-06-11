@@ -29,12 +29,13 @@
 
 #include <memory>
 #include <mutex>
+#include <random>
 #include <unordered_map>
 #include <vector>
 
+#include "../cpu-features.h"
 #include "../globals-vixl.h"
 #include "../utils-vixl.h"
-#include "cpu-features.h"
 
 #include "abi-aarch64.h"
 #include "cpu-features-auditor-aarch64.h"
@@ -159,7 +160,7 @@ class SimStack {
 
   // Allocate the stack, locking the parameters.
   Allocated Allocate() {
-    size_t align_to = 1 << align_log2_;
+    size_t align_to = uint64_t{1} << align_log2_;
     size_t l = AlignUp(limit_guard_size_, align_to);
     size_t u = AlignUp(usable_size_, align_to);
     size_t b = AlignUp(base_guard_size_, align_to);
@@ -683,7 +684,7 @@ class LogicPRegister {
 
   void SetAllBits() {
     int chunk_size = sizeof(ChunkType) * kBitsPerByte;
-    ChunkType bits = GetUintMask(chunk_size);
+    ChunkType bits = static_cast<ChunkType>(GetUintMask(chunk_size));
     for (int lane = 0;
          lane < (static_cast<int>(register_.GetSizeInBits() / chunk_size));
          lane++) {
@@ -871,10 +872,9 @@ class LogicVRegister {
       SetUint(vform, index, value.second);
       return;
     }
-    // TODO: Extend this to SVE.
-    VIXL_ASSERT((vform == kFormat1Q) && (index == 0));
-    SetUint(kFormat2D, 0, value.second);
-    SetUint(kFormat2D, 1, value.first);
+    VIXL_ASSERT((vform == kFormat1Q) || (vform == kFormatVnQ));
+    SetUint(kFormatVnD, 2 * index, value.second);
+    SetUint(kFormatVnD, 2 * index + 1, value.first);
   }
 
   void SetUintArray(VectorFormat vform, const uint64_t* src) const {
@@ -1283,7 +1283,7 @@ class SimExclusiveGlobalMonitor {
 class Debugger;
 
 template <uint32_t mode>
-uint64_t SHA1Operation(uint64_t x, uint64_t y, uint64_t z);
+uint64_t CryptoOp(uint64_t x, uint64_t y, uint64_t z);
 
 class Simulator : public DecoderVisitor {
  public:
@@ -1300,7 +1300,7 @@ class Simulator : public DecoderVisitor {
 
 
 #if defined(VIXL_HAS_ABI_SUPPORT) && __cplusplus >= 201103L && \
-    (defined(__clang__) || GCC_VERSION_OR_NEWER(4, 9, 1))
+    (defined(_MSC_VER) || defined(__clang__) || GCC_VERSION_OR_NEWER(4, 9, 1))
   // Templated `RunFrom` version taking care of passing arguments and returning
   // the result value.
   // This allows code like:
@@ -1503,6 +1503,7 @@ class Simulator : public DecoderVisitor {
   void SimulateSVESaturatingMulAddHigh(const Instruction* instr);
   void SimulateSVESaturatingMulHighIndex(const Instruction* instr);
   void SimulateSVEFPConvertLong(const Instruction* instr);
+  void SimulateSVEPmull128(const Instruction* instr);
   void SimulateMatrixMul(const Instruction* instr);
   void SimulateSVEFPMatrixMul(const Instruction* instr);
   void SimulateNEONMulByElementLong(const Instruction* instr);
@@ -1532,6 +1533,8 @@ class Simulator : public DecoderVisitor {
   void SimulateUnsignedMinMax(const Instruction* instr);
   void SimulateSHA512(const Instruction* instr);
 
+  void VisitCryptoSM3(const Instruction* instr);
+  void VisitCryptoSM4(const Instruction* instr);
 
   // Integer register accessors.
 
@@ -2572,6 +2575,14 @@ class Simulator : public DecoderVisitor {
   void PrintPWrite(int rt_code, uintptr_t address) {
     PrintPAccess(rt_code, "->", address);
   }
+  void PrintWriteU64(uint64_t x, uintptr_t address) {
+    fprintf(stream_,
+            "#      0x%016" PRIx64 " -> %s0x%016" PRIxPTR "%s\n",
+            x,
+            clr_memory_address,
+            address,
+            clr_normal);
+  }
 
   // Like Print* (above), but respect GetTraceParameters().
   void LogRead(int rt_code, PrintRegisterFormat format, uintptr_t address) {
@@ -2605,6 +2616,9 @@ class Simulator : public DecoderVisitor {
   }
   void LogPWrite(int rt_code, uintptr_t address) {
     if (ShouldTraceWrites()) PrintPWrite(rt_code, address);
+  }
+  void LogWriteU64(uint64_t x, uintptr_t address) {
+    if (ShouldTraceWrites()) PrintWriteU64(x, address);
   }
   void LogMemTransfer(uintptr_t dst, uintptr_t src, uint8_t value) {
     if (ShouldTraceWrites()) PrintMemTransfer(dst, src, value);
@@ -2904,7 +2918,7 @@ class Simulator : public DecoderVisitor {
     }
 
     if (offset == 0) {
-      while ((exclude & (1 << tag)) != 0) {
+      while ((exclude & (uint64_t{1} << tag)) != 0) {
         tag = (tag + 1) % 16;
       }
     }
@@ -2912,7 +2926,7 @@ class Simulator : public DecoderVisitor {
     while (offset > 0) {
       offset--;
       tag = (tag + 1) % 16;
-      while ((exclude & (1 << tag)) != 0) {
+      while ((exclude & (uint64_t{1} << tag)) != 0) {
         tag = (tag + 1) % 16;
       }
     }
@@ -2924,12 +2938,15 @@ class Simulator : public DecoderVisitor {
     return (addr & ~(UINT64_C(0xf) << 56)) | (tag << 56);
   }
 
+#if __linux__
+#define VIXL_HAS_SIMULATED_MMAP
   // Create or remove a mapping with memory protection. Memory attributes such
   // as MTE and BTI are represented by metadata in Simulator.
   void* Mmap(
       void* address, size_t length, int prot, int flags, int fd, off_t offset);
 
   int Munmap(void* address, size_t length, int prot);
+#endif
 
   // The common CPUFeatures interface with the set of available features.
 
@@ -2952,7 +2969,7 @@ class Simulator : public DecoderVisitor {
 // Also, the initialisation of the tuples in RuntimeCall(Non)Void is incorrect
 // in GCC before 4.9.1: https://gcc.gnu.org/bugzilla/show_bug.cgi?id=51253
 #if defined(VIXL_HAS_ABI_SUPPORT) && __cplusplus >= 201103L && \
-    (defined(__clang__) || GCC_VERSION_OR_NEWER(4, 9, 1))
+    (defined(_MSC_VER) || defined(__clang__) || GCC_VERSION_OR_NEWER(4, 9, 1))
 
 #define VIXL_HAS_SIMULATED_RUNTIME_CALL_SUPPORT
 
@@ -4518,7 +4535,7 @@ class Simulator : public DecoderVisitor {
     srcdst.UintArray(kFormat4S, sd);
 
     for (unsigned i = 0; i < ArrayLength(sd); i++) {
-      uint64_t t = SHA1Operation<mode>(sd[1], sd[2], sd[3]);
+      uint64_t t = CryptoOp<mode>(sd[1], sd[2], sd[3]);
 
       y += RotateLeft(sd[0], 5, kSRegSize) + t;
       y += src2.Uint(kFormat4S, i);
@@ -4552,6 +4569,40 @@ class Simulator : public DecoderVisitor {
   LogicVRegister sha512su1(LogicVRegister srcdst,
                            const LogicVRegister& src1,
                            const LogicVRegister& src2);
+
+
+  LogicVRegister aes(LogicVRegister srcdst,
+                     const LogicVRegister& src1,
+                     bool decrypt);
+  LogicVRegister aesmix(LogicVRegister srcdst,
+                        const LogicVRegister& src1,
+                        bool inverse);
+
+  LogicVRegister sm3partw1(LogicVRegister dst,
+                           const LogicVRegister& src1,
+                           const LogicVRegister& src2);
+  LogicVRegister sm3partw2(LogicVRegister dst,
+                           const LogicVRegister& src1,
+                           const LogicVRegister& src2);
+  LogicVRegister sm3ss1(LogicVRegister dst,
+                        const LogicVRegister& src1,
+                        const LogicVRegister& src2,
+                        const LogicVRegister& src3);
+  LogicVRegister sm3tt1(LogicVRegister srcdst,
+                        const LogicVRegister& src1,
+                        const LogicVRegister& src2,
+                        int index,
+                        bool is_a);
+  LogicVRegister sm3tt2(LogicVRegister srcdst,
+                        const LogicVRegister& src1,
+                        const LogicVRegister& src2,
+                        int index,
+                        bool is_a);
+
+  LogicVRegister sm4(LogicVRegister dst,
+                     const LogicVRegister& src1,
+                     const LogicVRegister& src2,
+                     bool is_key);
 
 #define NEON_3VREG_LOGIC_LIST(V) \
   V(addhn)                       \
@@ -4966,7 +5017,7 @@ class Simulator : public DecoderVisitor {
   uint32_t Crc32Checksum(uint32_t acc, T val, uint32_t poly);
   uint32_t Crc32Checksum(uint32_t acc, uint64_t val, uint32_t poly);
 
-  void SysOp_W(int op, int64_t val);
+  bool SysOp_W(int op, int64_t val);
 
   template <typename T>
   T FPRecipSqrtEstimate(T op);
@@ -5319,10 +5370,12 @@ class Simulator : public DecoderVisitor {
 
   bool CanReadMemory(uintptr_t address, size_t size);
 
+#ifndef _WIN32
   // CanReadMemory needs placeholder file descriptors, so we use a pipe. We can
   // save some system call overhead by opening them on construction, rather than
   // on every call to CanReadMemory.
   int placeholder_pipe_fd_[2];
+#endif
 
   template <typename T>
   static T FPDefaultNaN();
@@ -5401,14 +5454,21 @@ class Simulator : public DecoderVisitor {
   CPUFeaturesAuditor cpu_features_auditor_;
   std::vector<CPUFeatures> saved_cpu_features_;
 
-  // State for *rand48 functions, used to simulate randomness with repeatable
+  // linear_congruential_engine, used to simulate randomness with repeatable
   // behaviour (so that tests are deterministic). This is used to simulate RNDR
   // and RNDRRS, as well as to simulate a source of entropy for architecturally
   // undefined behaviour.
-  uint16_t rand_state_[3];
+  std::linear_congruential_engine<uint64_t,
+                                  0x5DEECE66D,
+                                  0xB,
+                                  static_cast<uint64_t>(1) << 48>
+      rand_gen_;
 
   // A configurable size of SVE vector registers.
   unsigned vector_length_;
+
+  // DC ZVA enable (= 0) status and block size.
+  unsigned dczid_ = (0 << 4) | 4;  // 2^4 words => 64-byte block size.
 
   // Representation of memory attributes such as MTE tagging and BTI page
   // protection in addition to branch interceptions.

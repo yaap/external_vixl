@@ -3825,5 +3825,44 @@ TEST_FEAT(sha512su0_0, sha512su0(v2.V2D(), v4.V2D()))
 TEST_FEAT(sha512su1_0, sha512su1(v19.V2D(), v9.V2D(), v27.V2D()))
 #undef TEST_FEAT
 
+#define TEST_FEAT(NAME, ASM)                                        \
+  TEST_TEMPLATE(CPUFeatures(CPUFeatures::kNEON, CPUFeatures::kAES), \
+                NEON_AES_##NAME,                                    \
+                ASM)
+TEST_FEAT(aesd_0, aesd(v0.V16B(), v29.V16B()))
+TEST_FEAT(aese_0, aese(v0.V16B(), v29.V16B()))
+TEST_FEAT(aesimc_0, aesimc(v0.V16B(), v29.V16B()))
+TEST_FEAT(aesmc_0, aesmc(v0.V16B(), v29.V16B()))
+#undef TEST_FEAT
+
+#define TEST_FEAT(NAME, ASM)                                        \
+  TEST_TEMPLATE(CPUFeatures(CPUFeatures::kNEON, CPUFeatures::kSM3), \
+                NEON_SM3_##NAME,                                    \
+                ASM)
+TEST_FEAT(sm3partw1_0, sm3partw1(v12.V4S(), v13.V4S(), v14.V4S()))
+TEST_FEAT(sm3partw2_0, sm3partw2(v12.V4S(), v13.V4S(), v14.V4S()))
+TEST_FEAT(sm3ss1_0, sm3ss1(v13.V4S(), v15.V4S(), v17.V4S(), v21.V4S()))
+TEST_FEAT(sm3tt1a_0, sm3tt1a(v30.V4S(), v29.V4S(), v9.V4S(), 1))
+TEST_FEAT(sm3tt1b_0, sm3tt1b(v30.V4S(), v29.V4S(), v9.V4S(), 3))
+TEST_FEAT(sm3tt2a_0, sm3tt2a(v30.V4S(), v29.V4S(), v9.V4S(), 2))
+TEST_FEAT(sm3tt2b_0, sm3tt2b(v30.V4S(), v29.V4S(), v9.V4S(), 0))
+#undef TEST_FEAT
+
+#define TEST_FEAT(NAME, ASM)                                        \
+  TEST_TEMPLATE(CPUFeatures(CPUFeatures::kNEON, CPUFeatures::kSM4), \
+                NEON_SM4_##NAME,                                    \
+                ASM)
+TEST_FEAT(sm4e, sm4e(v12.V4S(), v13.V4S()))
+TEST_FEAT(sm4ekey, sm4ekey(v12.V4S(), v13.V4S(), v14.V4S()))
+#undef TEST_FEAT
+
+#define TEST_FEAT(NAME, ASM)                                                \
+  TEST_TEMPLATE(CPUFeatures(CPUFeatures::kSVE2, CPUFeatures::kSVEPmull128), \
+                SVE_PMULL128_##NAME,                                        \
+                ASM)
+TEST_FEAT(pmullb, pmullb(z12.VnQ(), z21.VnD(), z12.VnD()))
+TEST_FEAT(pmullt, pmullt(z12.VnQ(), z21.VnD(), z12.VnD()))
+#undef TEST_FEAT
+
 }  // namespace aarch64
 }  // namespace vixl

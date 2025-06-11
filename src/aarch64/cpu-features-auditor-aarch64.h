@@ -31,7 +31,7 @@
 #include <iostream>
 #include <unordered_map>
 
-#include "cpu-features.h"
+#include "../cpu-features.h"
 
 #include "decoder-aarch64.h"
 #include "decoder-visitor-map-aarch64.h"
@@ -113,6 +113,8 @@ class CPUFeaturesAuditor : public DecoderVisitor {
 #define DECLARE(A) virtual void Visit##A(const Instruction* instr);
   VISITOR_LIST(DECLARE)
 #undef DECLARE
+  void VisitCryptoSM3(const Instruction* instr);
+  void VisitCryptoSM4(const Instruction* instr);
 
   void LoadStoreHelper(const Instruction* instr);
   void LoadStorePairHelper(const Instruction* instr);
