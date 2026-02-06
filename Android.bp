@@ -124,7 +124,12 @@ art_cc_defaults {
             cppflags: [
                 "-DVIXL_INCLUDE_SIMULATOR_AARCH64",
                 "-DVIXL_INCLUDE_TARGET_A64",
-            ],
+            ] + select((arch(), soong_config_variable("art_module", "art_use_simulator")), {
+                // Implicit checks are only supported on x86_64 hosts and should only be used by
+                // the ART simulator.
+                ("x86_64", true): ["-DVIXL_ENABLE_IMPLICIT_CHECKS"],
+                (default, default): unset,
+            }),
         },
     },
 }
