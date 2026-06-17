@@ -26,6 +26,12 @@
 
 #include "test-assembler-aarch64.h"
 
+// Temporarily undefine the __ macro so that it doesn't interfere with the
+// structured bindings in the following C++ includes
+#ifdef __
+#undef __
+#endif
+
 #include <cfloat>
 #include <cmath>
 #include <cstdio>
@@ -41,6 +47,9 @@
 #include "aarch64/macro-assembler-aarch64.h"
 #include "aarch64/simulator-aarch64.h"
 #include "aarch64/test-utils-aarch64.h"
+
+// Redefine the __ macro
+#define __ masm.
 
 namespace vixl {
 namespace aarch64 {
